@@ -19,17 +19,33 @@ Before you can run the application, ensure you have the following installed:
 You also need to have an API key from OpenAI for ChatGPT access.
 
 ## Installation
+Open your terminal/shell, and enter the following commands.
+
 
 1. Clone the repository:
 ``` git clone https://github.com/yourusername/chatgpt-anywhere.git ```
 
-2. Navigate into the project directory:
+3. Navigate into the project directory:
 ```cd TypeGPT```
 
-3. Install the required packages:
+4. Install the required packages:
 ```pip install pynput requests pyperclip```
 
+## Running the program:
+### Option 1 - Run the program normally ###
+```python3 textfieldgpt.py```
 
+### Option 2 - Run the program always in the background ###
+This will allow you to have the program running, even when the terminal is closed:
+```nohup python3 textfieldgpt.py &```
+in order to check in on the process, type the following into your terminal:
+```ps aux | grep textfieldgpt.py```
+and in order to stop the program from running, grab the PID you're shown when you run the command above (a 5 digit number associated with the process), and type the following:
+```kill -9 12812``` 
+here our PID is 12812 for example.
+
+
+## Usage ##
 Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google docs, code editors, etc) to interact with the application:
 
 - `/ask`: anything you type after this command will become the prompt. Press Cmmd+shift+Enter to send the prompt to the OpenAI API.
@@ -52,6 +68,10 @@ Modify the `system_prompt` in the script to customize the behavior and responses
 ## Contributing
 
 Contributions are very welcome! Please fork the repository and submit pull requests with your proposed changes.
+
+## Future Plans
+I plan on adding support for other API's (Gemini, Claude, Olama) as well as a user-friendly GUI to pass your api key's into. If you have any further ideas, I'd love to hear them!
+
 
 ## License
 
