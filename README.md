@@ -1,7 +1,9 @@
 # TypeGPT
 
 
-https://github.com/olyaiy/TypeGPT/assets/97487352/a10faec9-39ac-47ac-8ae3-9847601e41c3
+
+https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0a94156
+
 
 
 A Python application that allows you to invoke ChatGPT from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
