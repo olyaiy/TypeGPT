@@ -22,7 +22,7 @@ Before you can run the application, ensure you have the following installed:
 - `requests` package
 - `pyperclip` package
 
-You also need to have an API key from OpenAI for ChatGPT access.
+You also need to have an API key from OpenAI for ChatGPT access. You can get yours at https://openai.com/api/
 
 ## Installation
 Open your terminal/shell, and enter the following commands.
