@@ -1,12 +1,13 @@
 # TypeGPT
 
+TypeGPT is a Python application that allows you to invoke ChatGPT from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
 
 
 https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0a94156
 
 
 
-A Python application that allows you to invoke ChatGPT from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
+
 
 ## Features
 
@@ -41,10 +42,10 @@ Open your terminal/shell, and enter the following commands.
 ### Option 1 - Run the program normally ###
 ```python3 textfieldgpt.py```
 
-### Option 2 - Run the program always in the background ###
+### Option 2 - Run the program in the background ###
 This will allow you to have the program running, even when the terminal is closed:
 ```nohup python3 textfieldgpt.py &```
-in order to check in on the process, type the following into your terminal:
+To manage the process, use:
 ```ps aux | grep textfieldgpt.py```
 and in order to stop the program from running, grab the PID you're shown when you run the command above (a 5 digit number associated with the process), and type the following:
 ```kill -9 12812``` 
@@ -54,18 +55,20 @@ here our PID is 12812 for example.
 ## Usage ##
 Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google docs, code editors, etc) to interact with the application:
 
-- `/ask`: anything you type after this command will become the prompt. Press Cmmd+shift+Enter to send the prompt to the OpenAI API.
-The response should appear within a few seconds.
+- `/ask`: Follow this command with your prompt and press ```Cmd+Shift+Enter``` to send it.
 
-- `/see`: Whatever is in your clipboard will become the prompt. You will see a preview of the first 9 words. Press Cmmd+shift+Enter to send your clipboard to chatGPT and the response should appear within a few seconds.
+
+- `/see`: Uses clipboard content as the prompt. Preview the first 9 words, then press Cmd+Shift+Enter.
+
 
 - `/stop`: Stop listening. Everytime you type `/ask` or `/see` the program starts listening for Cmmd+shift+Enter to send a prompt to the OpenAI API. When you type /stop, the program will stop listening. This is incase you start a prompt but change your mind. 
 
 - `Shift + Cmd + Enter`: Send the text to ChatGPT when in listening mode.
 
-Finish this sentance of instructions. add one or two sentances, telling them how to save variables globally and permementantly.
 Ensure you set your `API_KEY` in the environment variables for the application to function correctly.
-you can set the API_KEY permanently by adding it to your system's environment variables. On macOS and Linux, add the export statement `export API_KEY='your_api_key_here'` to your shell configuration file, such as `.bashrc` or `.zshrc`. (If you don't know how, ask chatGPT to show you).
+On macOS and Linux, add this line to .bashrc or .zshrc:
+```export API_KEY='your_api_key_here'```
+(If you don't know how, ask chatGPT to show you).
 
 ## Configuration
 
