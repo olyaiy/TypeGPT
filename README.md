@@ -1,6 +1,8 @@
 # TypeGPT
 
-TypeGPT is a Python application that allows you to invoke ChatGPT from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
+June 7, 2024 update: added the ability to switch to select Google Gemini. Support for other LLMs on the way!
+
+TypeGPT is a Python application that allows you to invoke ChatGPT or Google Gemini from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
 
 
 https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0a94156
@@ -61,7 +63,12 @@ Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google doc
 - `/see`: Uses clipboard content as the prompt. Preview the first 9 words, then press Cmd+Shift+Enter.
 
 
-- `/stop`: Stop listening. Everytime you type `/ask` or `/see` the program starts listening for Cmmd+shift+Enter to send a prompt to the OpenAI API. When you type /stop, the program will stop listening. This is incase you start a prompt but change your mind. 
+- `/stop`: Stop listening. Everytime you type `/ask` or `/see` the program starts listening for Cmmd+shift+Enter to send a prompt to the OpenAI API. When you type /stop, the program will stop listening. This is incase you start a prompt but change your mind.
+
+- `/chatgpt`: Switch to ChatGPT model.
+- `/gemini`: Switch to Google Gemini model.
+- `/check`: Check which model is currently active.
+
 
 - `Shift + Cmd + Enter`: Send the text to ChatGPT when in listening mode.
 
