@@ -80,6 +80,7 @@ On macOS and Linux, add this line to .bashrc or .zshrc:
 ## Configuration
 
 Modify the `system_prompt.txt` file to customize the behavior and responses of your AI based on your needs. 
+You can also change the version of Gemini or ChatGPT in the apicalls.py file. Currently the default is set to gpt-4-turbo and gemini-1.5-flash.
 
 ## Contributing
 
