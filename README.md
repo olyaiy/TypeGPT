@@ -79,7 +79,7 @@ On macOS and Linux, add this line to .bashrc or .zshrc:
 
 ## Configuration
 
-Modify the `system_prompt` in the script to customize the behavior and responses of ChatGPT based on your needs.
+Modify the `system_prompt.txt` file to customize the behavior and responses of your AI based on your needs. 
 
 ## Contributing
 
