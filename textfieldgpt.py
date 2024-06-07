@@ -1,35 +1,26 @@
 from pynput import keyboard
-from requests import post
-import pyperclip, os
+import pyperclip
+from apicalls import query_openai, query_gemini
 
-API_KEY = os.getenv('API_KEY')
-if not API_KEY:
-    raise ValueError("No API Key set in environment variables.")
 listening = False
 captured_text = ''
 command_pressed = False
 shift_pressed = False
 keyboard_controller = keyboard.Controller()
 mode = None
+model = 'chatgpt'
 
-system_prompt = """
-As an embedded assistant in this application, you are accessible from any text field, 
-including chat apps, documents, and code editors. 
-Respond with concise and clear answers suitable for the context from which you are called. 
-Provide brief responses by default. If requested, provide detailed explanations or complete 
-coding solutions. When delivering code, present it plainly without syntax 
-highlighting or special formatting. 
-Avoid self-references and do not use first-person pronouns. 
-Your presence should be seamless and unobtrusive, aiming to integrate naturally into the user's workflow without drawing 
-attention to yourself. For open ended questions, answer in concise bullet points LIMITED TO 100 WORDS. It is crucial that you follow 
-this limit.  
-If the user asks for a detailed explanation, you may provide a short paragraph, up to 300 words.  
-For coding questions, give just the code requested with no markdown formatting. Just the code by itself.
-"""
+def api_call(text):
+    global model
+
+    if model == 'chatgpt':
+        return query_openai(text)
+    elif model == 'gemini':
+        return query_gemini(text)
 
 def on_press(key):
     # Declare global variables to modify them inside the function
-    global listening, captured_text, command_pressed, shift_pressed, mode
+    global listening, captured_text, command_pressed, shift_pressed, mode, model
     
     try:
         # Check special keys
@@ -53,6 +44,12 @@ def on_press(key):
                     # Add the character to the captured text
                     captured_text += key.char
 
+                if captured_text == '/quit':
+                    mode = 'quit'
+                    listening = False
+                    listener.stop()  # Stop the listener directly
+                    type_text(' ...quitting.')
+                    return False  # Additionally return False to terminate the loop
 
                 # Check if the captured text is '/ask'
                 if captured_text == '/ask':
@@ -76,6 +73,26 @@ def on_press(key):
                     captured_text = ''
                     mode = None
                     type_text(' ..stopped.')  # Provide feedback to the user that listening has stopped
+
+                elif captured_text == '/chatgpt' or captured_text == '/chatGPT' or captured_text == '/chat GPT' :
+                    model = 'chatgpt'  
+                    mode = None
+                    listening = False
+                    type_text(' ... ChatGPT selected.')
+
+                elif captured_text == '/Gemini' or captured_text == '/gemini':
+                    model = 'gemini' 
+                    mode = None
+                    listening = False
+                    type_text(' ... Gemini selected.')
+
+                elif captured_text == '/check':
+                    type_text(" "+ model)
+                    listening = False
+                    mode = None
+
+                
+
 
 
     except AttributeError:
@@ -113,15 +130,19 @@ def on_release(key):
                     # Handle the line mode where only the current line is processed
                     query = captured_text[5:]  # Remove '/ask' from the start
                     keyboard_controller.type('... \n')  # Simulate typing
-                    response = query_chatgpt(query.strip())  # Get response from chatGPT
+                    response = api_call(query.strip())  # Get response from chatGPT
                     type_text(response)  # Type out the response
 
                 elif mode == 'all':
                     # Assuming you want to process the entire captured text
                     query = captured_text  # This should be set based on your specific needs
-                    keyboard_controller.type('... \n')  # Simulate typing
-                    response = query_chatgpt(query.strip())  # Get response from chatGPT
-                    type_text(response)  # Type out the response
+                    keyboard_controller.type(' -> \n')  # Simulate typing
+                    response = api_call(query.strip())  # Get response from chatGPT
+                    keyboard_controller.type(response)  # Type out the responseHello! How can I assist you today?
+
+                elif mode == 'quit':
+                    return False  # Stop the listener and quit the program
+
 
 
                 # Reset variables after processing
@@ -129,28 +150,6 @@ def on_release(key):
                 captured_text = ''
                 mode = None
 
-def query_chatgpt(text):
-    # Define the URL endpoint for the OpenAI API
-    url = 'https://api.openai.com/v1/chat/completions'
-    
-    # Set up headers with the API key for authorization and content type for JSON
-    headers = {
-        'Authorization': f'Bearer {API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    # Prepare the data payload with the specific model and conversation context
-    data = {
-        'model': 'gpt-4-turbo',  # Specifies the model type
-        'messages': [
-            {"role": "system", "content": system_prompt},  # System-level instruction for chatbot behavior
-            {'role': 'user', 'content': text}  # User's query to be processed by the chatbot
-        ] 
-    }
-    
-    # Make an HTTP POST request to the API with the prepared headers and data
-    response = post(url, json=data, headers=headers)
-    return response.json()['choices'][0]['message']['content']
 
 def type_text(text):
     # Use the pynput keyboard controller to simulate typing the provided text
