@@ -51,5 +51,5 @@ def query_gemini(input_text):
         generation_config=generation_config,
     )
     chat_session = model.start_chat(history=[])
-    response = chat_session.send_message(input_text)
+    response = chat_session.send_message(system_prompt+input_text)
     return response.text
