@@ -1,2 +1,17 @@
+myenv/
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+gpt.log
+.env
+.ipynb_checkpoints/
+*.so
+*.log
+*.coverage
+
+node_modules/
+coverage/
+
 keys.txt
 
