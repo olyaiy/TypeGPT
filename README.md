@@ -1,7 +1,5 @@
 # TypeGPT
 
-June 8, 2024 update: THERE IS CURRENTLY A BUG WITH THE GEMINI API that stops the program from running properly. Currently working to fix it, should have the patch out by midnight :) If you want to run the program, please clone the older commit from two days ago OR simply remove the google gemini functionality from apicalls.py , chatGPT functionality should still work!
-
 June 7, 2024 update: added the ability to switch to select Google Gemini. Support for other LLMs on the way!
 
 TypeGPT is a Python application that allows you to invoke ChatGPT or Google Gemini from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
@@ -35,13 +33,15 @@ Open your terminal/shell, and enter the following commands.
 
 
 1. Clone the repository:
-``` git clone https://github.com/yourusername/chatgpt-anywhere.git ```
+``` git clone https://github.com/olyaiy/TypeGPT.git ```
 
 3. Navigate into the project directory:
 ```cd TypeGPT```
 
 4. Create a virtual Eng (optional but highly recommended)
-```python -m venv myenv```
+```python3 -m venv myenv```
+
+
 ```source myenv/bin/activate```
 
 4. Install the required packages:
@@ -49,13 +49,13 @@ Open your terminal/shell, and enter the following commands.
 
 ## Running the program:
 ### Option 1 - Run the program normally ###
-```python3 textfieldgpt.py```
+```python3 TypeGPT.py```
 
 ### Option 2 - Run the program in the background ###
 This will allow you to have the program running, even when the terminal is closed:
-```nohup python3 textfieldgpt.py &```
+```nohup python3 TypeGPT.py &```
 To manage the process, use:
-```ps aux | grep textfieldgpt.py```
+```ps aux | grep TypeGPT.py```
 and in order to stop the program from running, grab the PID you're shown when you run the command above (a 5 digit number associated with the process), and type the following:
 ```kill -9 12812``` 
 here our PID is 12812 for example.
