@@ -1,17 +1,18 @@
-import os
 from requests import post
 import google.generativeai as genai
 
-# OpenAI API setup
-OPENAI_API_KEY = os.getenv('API_KEY')
-if not OPENAI_API_KEY:
-    raise ValueError("No OpenAI API Key set in environment variables.")
+def read_api_keys(file_path):
+    keys = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split('=')
+            keys[key] = value
+    return keys
 
-# Gemini API setup
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-if not GEMINI_API_KEY:
-    raise ValueError("No Gemini API Key set in environment variables.")
-genai.configure(api_key=GEMINI_API_KEY)
+# Use the function to get the keys from 'keys.txt'
+api_keys = read_api_keys('keys.txt')
+OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
+GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
 
 
 # System prompt text
@@ -26,7 +27,7 @@ def query_openai(text):
         'Content-Type': 'application/json'
     }
     data = {
-        'model': 'gpt-4-turbo',
+        'model': 'gpt-4o',
         'messages': [
             {"role": "system", "content": system_prompt},
             {'role': 'user', 'content': text}

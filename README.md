@@ -24,6 +24,7 @@ Before you can run the application, ensure you have the following installed:
 - `pynput` package
 - `requests` package
 - `pyperclip` package
+- `google.generativeai` package
 
 You also need to have an API key from OpenAI for ChatGPT access. You can get yours at https://openai.com/api/
 
@@ -37,8 +38,12 @@ Open your terminal/shell, and enter the following commands.
 3. Navigate into the project directory:
 ```cd TypeGPT```
 
+4. Create a virtual Eng (optional but highly recommended)
+```python -m venv myenv```
+```source myenv/bin/activate```
+
 4. Install the required packages:
-```pip install pynput requests pyperclip```
+```pip install pynput requests pyperclip google.generativeai```
 
 ## Running the program:
 ### Option 1 - Run the program normally ###
@@ -72,10 +77,12 @@ Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google doc
 
 - `Shift + Cmd + Enter`: Send the text to ChatGPT when in listening mode.
 
-Ensure you set your `API_KEY` in the environment variables for the application to function correctly.
-On macOS and Linux, add this line to .bashrc or .zshrc:
-```export API_KEY='your_api_key_here'```
-(If you don't know how, ask chatGPT to show you).
+Ensure you set your `OPENAI_API_KEY` and `GEMINI_API_KEY` by modifying the `keys.txt` file in the project directory. Update this file with your actual API keys:
+
+OPENAI_API_KEY=your-openai-key-here
+GEMINI_API_KEY=your-gemini-key-here
+
+This file is critical for the application to function correctly, so be sure to update it before running the program.
 
 ## Configuration
 
