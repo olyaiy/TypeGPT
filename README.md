@@ -1,5 +1,7 @@
 # TypeGPT
 
+June 8, 2024 update: THERE IS CURRENTLY A BUG WITH THE GEMINI API that stops the program from running properly. Currently working to fix it, should have the patch out by midnight :) If you want to run the program, please clone the older commit from two days ago OR simply remove the google gemini functionality from apicalls.py , chatGPT functionality should still work!
+
 June 7, 2024 update: added the ability to switch to select Google Gemini. Support for other LLMs on the way!
 
 TypeGPT is a Python application that allows you to invoke ChatGPT or Google Gemini from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT using keyboard shortcuts.
