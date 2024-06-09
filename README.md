@@ -39,6 +39,8 @@ Open your terminal/shell, and enter the following commands.
 ```cd TypeGPT```
 
 4. Create a virtual Eng (optional but highly recommended)
+
+
 ```python3 -m venv myenv```
 
 
