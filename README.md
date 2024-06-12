@@ -38,35 +38,37 @@ Open your terminal/shell, and enter the following commands.
 3. Navigate into the project directory:
 ```cd TypeGPT```
 
-4. Create a virtual Eng (optional but highly recommended)
+4. Give execute permission, and run the install.sh file:
+
+on mac
+```chmod +x install.sh```
 
 
-```python3 -m venv myenv```
+```chmod +x run.sh```
 
 
-```source myenv/bin/activate```
+```./install.sh``` 
 
-4. Install the required packages:
-```pip install pynput requests pyperclip google.generativeai```
 
 ## Running the program:
-### Option 1 - Run the program normally ###
-```python3 TypeGPT.py```
+### Run using the provided executable (will allow the program to run in the background ###
 
-### Option 2 - Run the program in the background ###
-This will allow you to have the program running, even when the terminal is closed:
-```nohup python3 TypeGPT.py &```
-To manage the process, use:
+
+```./run.sh```
+
+To manage the program, use:
 ```ps aux | grep TypeGPT.py```
+
 and in order to stop the program from running, grab the PID you're shown when you run the command above (a 5 digit number associated with the process), and type the following:
 ```kill -9 12812``` 
+
 here our PID is 12812 for example.
 
 
 ## Usage ##
 Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google docs, code editors, etc) to interact with the application:
 
-- `/ask`: Follow this command with your prompt and press ```Cmd+Shift+Enter``` to send it.
+- `/ask`: Follow this command with your prompt and press ```Cmd+Shift+Enter``` to send it. You can also paste the clipboard content using Cmmd+V. Anything you paste will be included in your prompt.
 
 
 - `/see`: Uses clipboard content as the prompt. Preview the first 9 words, then press Cmd+Shift+Enter.
@@ -74,9 +76,12 @@ Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google doc
 
 - `/stop`: Stop listening. Everytime you type `/ask` or `/see` the program starts listening for Cmmd+shift+Enter to send a prompt to the OpenAI API. When you type /stop, the program will stop listening. This is incase you start a prompt but change your mind.
 
+
 - `/chatgpt`: Switch to ChatGPT model.
 - `/gemini`: Switch to Google Gemini model.
 - `/check`: Check which model is currently active.
+- `/quitt`: To quit the program. 
+
 
 
 - `Shift + Cmd + Enter`: Send the text to ChatGPT when in listening mode.
