@@ -10,9 +10,19 @@ python3 -m venv myenv
 source myenv/bin/activate
 
 # Install the required packages
-pip install pynput requests pyperclip google.generativeai
+pip install pynput requests pyperclip google-generativeai anthropic pillow
 
-# Deactivate the virtual environment
+# Check if Ollama is installed (for Llama3)
+if ! command -v ollama &> /dev/null
+then
+    echo "Ollama is not installed. Please install Ollama for Llama3 support."
+    echo "Visit https://github.com/jmorganca/ollama for installation instructions."
+    echo "After installing Ollama, run this script again to complete the setup."
+    exit 1
+fi
+
+# If we reach this point, all installations were successful
 deactivate
 
-echo "Installation completed. You can now run the program with 'sh run.sh'"
+echo "Installation completed successfully. You can now run the program with 'sh run.sh'"
+echo "Make sure to update your API keys in the keys.txt file before running the program."

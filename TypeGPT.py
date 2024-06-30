@@ -1,159 +1,181 @@
+import pyautogui
+import base64
+from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import query_openai, query_gemini
-
+from api_calls import api_call
+import sys
+from PIL import Image, ImageGrab  # Updated import
+import io
 
 class TypeGPT:
-    # Constructor to initialize the application's state
     def __init__(self):
-        self.listening = False  # Tracks if the app is actively listening for user commands
-        self.captured_text = ''  # Buffer to store text captured from keyboard
-        self.command_pressed = False  # Tracks if the control key is pressed
-        self.shift_pressed = False  # Tracks if the shift key is pressed
-        self.v_pressed = False  # Tracks if the 'v' key is pressed
-        self.keyboard_controller = keyboard.Controller()  # Controller for programmatically controlling the keyboard
-        self.mode = None  # Mode of operation (line or all text)
-        self.model = 'chatgpt'  # Default AI model to use
+        self.listening = False
+        self.captured_text = ''
+        self.keyboard_controller = keyboard.Controller()
+        self.mode = None
+        self.model = 'chatgpt'  # Default model
+        self.special_keys = {
+            'command': False,
+            'shift': False,
+            'v': False
+        }
+        self.screenshot = None
+        self.screenshot_base64 = None
+        self.should_quit = False
 
-    # Function to call the appropriate AI model API with the given text
-    def api_call(self, text):
-        if self.model == 'chatgpt':
-            return query_openai(text)
-        elif self.model == 'gemini':
-            return query_gemini(text)
-
-    # Event handler for when a key is pressed
     def on_press(self, key):
         try:
-            self.handle_special_keys(key)  # Handle special keys like control, shift, v
-            if hasattr(key, 'char'):
-                self.process_character(key)  # Process printable character keys
+            self.handle_special_keys(key, pressed=True)
+            if isinstance(key, keyboard.KeyCode) and key.char is not None:
+                self.process_character(key.char)
         except AttributeError:
-            self.captured_text = 'input not captured. Try again.'
+            pass
 
-    # Handles special keys, setting flags based on which keys are pressed
-    def handle_special_keys(self, key):
-        if key in [keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.cmd_l, keyboard.Key.cmd_r]:
-            self.command_pressed = True  # This is the same as saying ctrl pressed
-        elif key == keyboard.Key.shift:
-            self.shift_pressed = True
-        elif hasattr(key, 'char') and key.char == 'v':
-            self.v_pressed = True
+    def on_release(self, key):
+        if key == keyboard.Key.esc:
+            return False
+        
+        self.handle_special_keys(key, pressed=False)
 
-    # Processes printable characters; listening for commands or updating the buffer
-    def process_character(self, key):
-        if key.char == '/':
-            self.start_listening()  # Start listening for commands on '/'
+        if (key == keyboard.Key.enter and 
+            self.special_keys['command'] and 
+            self.special_keys['shift']):
+            self.process_enter_key()
+
+        if self.should_quit:
+            return False  # This will stop the listener
+
+    def handle_special_keys(self, key, pressed):
+        key_mapping = {
+            keyboard.Key.cmd: 'command',
+            keyboard.Key.shift: 'shift',
+        }
+        
+        if key in key_mapping:
+            self.special_keys[key_mapping[key]] = pressed
+        elif isinstance(key, keyboard.KeyCode) and key.char == 'v':
+            self.special_keys['v'] = pressed
+
+    def process_character(self, char):
+        if char == '/':
+            self.start_listening()
         elif self.listening:
-            self.update_captured_text(key.char)  # Append character to buffer if listening
+            self.update_captured_text(char)
 
-    # Starts the listening process, initializes the buffer with '/'
     def start_listening(self):
         self.listening = True
         self.captured_text = '/'
 
     def update_captured_text(self, char):
-        if self.command_pressed and self.v_pressed:  # Check if control and v are pressed together (the user pastes text)
-            clipboard_content = pyperclip.paste()  # Get content from clipboard
-            self.captured_text += clipboard_content  # Append clipboard content to the captured text
-            self.v_pressed = False  # Reset the v_pressed flag to avoid repeated pasting
+        if self.special_keys['command'] and self.special_keys['v']:
+            self.handle_paste()
         else:
-            self.captured_text += char  # Normal character appending
+            self.captured_text += char
 
-        # Check if the accumulated text matches any commands
-        if self.captured_text in ['/quit', '/stop', '/ask', '/see', '/chatgpt', '/gemini', '/check']:
-            self.process_commands()  # Process recognized commands
+        self.process_commands()
 
-    # Processes recognized commands and invokes corresponding methods
+    def handle_paste(self):
+        image = ImageGrab.grabclipboard()
+        if isinstance(image, Image.Image):
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            self.captured_text += f"[IMAGE:{img_str}]"
+            self.type_output("(image pasted)")
+        else:
+            self.captured_text += pyperclip.paste()
+        self.special_keys['v'] = False
+
     def process_commands(self):
         commands = {
             '/quit': self.quit,
             '/stop': self.stop_listening,
-            '/ask': self.set_mode_line,
-            '/see': self.set_mode_all,
+            '/ask': lambda: self.set_mode('line'),
+            '/see': self.capture_screenshot,
             '/chatgpt': lambda: self.select_model('chatgpt'),
             '/gemini': lambda: self.select_model('gemini'),
+            '/claude': lambda: self.select_model('claude'),
+            '/llama3': lambda: self.select_model('llama3'),
             '/check': self.check_model
         }
-        command_function = commands.get(self.captured_text)
-        if command_function:
-            command_function()
+        
+        for cmd, func in commands.items():
+            if self.captured_text.endswith(cmd):
+                func()
+                self.captured_text = ''  # Clear the captured text after processing
+                break
 
-    # Quits the app
+    def capture_screenshot(self):
+        self.screenshot = pyautogui.screenshot()
+        buffered = BytesIO()
+        self.screenshot.save(buffered, format="PNG")
+        self.screenshot_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        self.type_output(" ss captured: ")
+        self.mode = 'screenshot'
+        self.captured_text = self.captured_text[:-4]  # Remove '/see' from captured text
+
     def quit(self):
-        self.keyboard_controller.type(' ...quitting.')
-        return False
+        self.type_output(' ...quitting.')
+        self.should_quit = True  # Set the flag to quit
 
-    # Stops listening for commands
     def stop_listening(self):
         self.listening = False
         self.captured_text = ''
         self.mode = None
-        self.keyboard_controller.type(' ...stopped.')
+        self.type_output(' ...stopped.')
 
-    # Sets the app to capture only the current line
-    def set_mode_line(self):
-        self.mode = 'line'
-        self.keyboard_controller.type(": ")
+    def set_mode(self, mode):
+        self.mode = mode
+        if mode == 'line':
+            self.type_output(": ")
 
-    # Sets the app to capture all text in the clipboard
-    def set_mode_all(self):
-        self.mode = 'all'
-        self.captured_text = pyperclip.paste()
-        preview = self.captured_text[:10] + "..." if len(self.captured_text) >= 10 else self.captured_text
-        self.keyboard_controller.type(" (" + preview + ")")
-
-    # Selects the AI model to use
     def select_model(self, model):
-        self.model = model
-        self.listening = False
-        self.keyboard_controller.type(f' ... {model.capitalize()} selected.')
+        if model in ['chatgpt', 'gemini', 'claude', 'llama3']:
+            self.model = model
+            self.listening = False
+            self.type_output(f' ... {model.capitalize()} selected.')
+        else:
+            self.type_output(f' ... Unsupported model: {model}')
 
-    # Checks and displays the current AI model
     def check_model(self):
-        self.keyboard_controller.type(" -> " + self.model + " selected.")
+        self.type_output(f" -> {self.model} selected.")
         self.listening = False
         self.mode = None
 
-    # Event handler for when a key is released
-    def on_release(self, key):
-        # Check if the escape key is pressed, if so, return False to stop the listener
-        if key == keyboard.Key.esc:
-            return False
-        # Check if either left or right control keys are released, reset the command_pressed flag
-        if key in [keyboard.Key.ctrl_l, keyboard.Key.ctrl_r, keyboard.Key.cmd_l, keyboard.Key.cmd_r]:
-            self.command_pressed = False
-        # Check if the shift key is released, reset the shift_pressed flag
-        if key == keyboard.Key.shift:
-            self.shift_pressed = False
-
-        # Check if the enter key is released while both control and shift keys were held down
-        if key == keyboard.Key.enter and self.command_pressed and self.shift_pressed:
-            self.process_enter_key()  # Invoke method to process the command input
-
-    # Processes the enter key when control+shift+enter are pressed together
     def process_enter_key(self):
-        # Check if the app is currently in listening mode and a specific mode is set
-        if self.listening and self.mode in ['line', 'all', 'quit']:
-            self.process_text(self.captured_text)  # Process the captured text through the AI model
-            self.listening = False  # Stop listening after processing
+        if self.listening and self.mode in ['line', 'screenshot', 'quit']:
+            self.process_text(self.captured_text)
+            self.listening = False
 
-    # Sends the text to the selected AI model and types the response
     def process_text(self, text):
-        # start a new line
-        self.keyboard_controller.type(' ...\n')
-        # call the appropriate AI model API with the text
-        response = self.api_call(text.strip())
-        # type the response
-        self.keyboard_controller.type(response)
+        self.type_output(' ...\n')
+        prompt = text.strip()
+        image_base64 = None
+        
+        if '[IMAGE:' in prompt:
+            parts = prompt.split('[IMAGE:', 1)
+            prompt = parts[0]
+            image_base64 = parts[1].split(']', 1)[0]
+        
+        response = api_call(self.model, prompt, image_base64)
+        self.type_output(response)
+        self.screenshot = None
+        self.screenshot_base64 = None
+        self.mode = None
 
-    # Starts the keyboard listener
+    def type_output(self, text):
+        for char in text:
+            self.keyboard_controller.press(char)
+            self.keyboard_controller.release(char)
+
     def run(self):
         with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
             listener.join()
+        
+        if self.should_quit:
+            sys.exit(0)  # Properly exit the program
 
-
-# Entry point of the application
 if __name__ == "__main__":
     typegpt = TypeGPT()
     typegpt.run()
