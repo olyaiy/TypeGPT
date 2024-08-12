@@ -48,7 +48,7 @@ Open your terminal/shell, and enter the following commands.
 4. Give execute permission, and run the install.sh file:
 
 on mac
-```(chmod +x install.sh && chmod +x run.sh) && ./install.sh```
+```(chmod +x scripts/install.sh && chmod +x scripts/run.sh) && ./scripts/install.sh```
 
 
 ## Running the program:
