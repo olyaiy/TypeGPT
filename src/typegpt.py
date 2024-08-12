@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import api_call
+from .api_calls import api_call
 import sys
 from PIL import Image, ImageGrab  # Updated import
 import io

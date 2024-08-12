@@ -1,0 +1,18 @@
+# GUI and system interaction
+pyautogui==0.9.54
+pynput==1.7.6
+Pillow==10.0.0
+
+# Clipboard operations
+pyperclip==1.8.2
+
+# API interactions
+requests==2.31.0
+
+# AI model SDKs
+openai==1.3.5
+google-generativeai==0.3.1
+anthropic==0.7.4
+
+# Optional: for type hinting and better IDE support
+typing-extensions==4.7.1

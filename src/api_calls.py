@@ -14,13 +14,13 @@ def read_api_keys(file_path):
            keys[key] = value
    return keys
 
-api_keys = read_api_keys('keys.txt')
+api_keys = read_api_keys('config/keys.txt')
 OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
 GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
 ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
 
 # System prompt text
-with open('system_prompt.txt', 'r') as file:
+with open('config/system_prompt.txt', 'r') as file:
     # system_prompt = file.read()
     system_prompt = ''
 
