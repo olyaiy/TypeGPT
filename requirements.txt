@@ -16,3 +16,6 @@ anthropic==0.7.4
 
 # Optional: for type hinting and better IDE support
 typing-extensions==4.7.1
+
+#.env
+python-dotenv==1.0.0

@@ -1,28 +1,32 @@
+import os
+from dotenv import load_dotenv
 import requests
 from requests import post
 import google.generativeai as genai
 import json
 import base64
-import os
 from anthropic import Anthropic
 
-def read_api_keys(file_path):
-   keys = {}
-   with open(file_path, 'r') as file:
-       for line in file:
-           key, value = line.strip().split('=')
-           keys[key] = value
-   return keys
+# Get the directory of the current script
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Go up one level to the project root
+project_root = os.path.dirname(current_dir)
 
-api_keys = read_api_keys('config/keys.txt')
-OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
-GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
-ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
+# Load environment variables from .env and .env.local files
+load_dotenv(os.path.join(project_root, 'config', '.env'))
+load_dotenv(os.path.join(project_root, 'config', '.env.local'), override=True)
+
+# Access environment variables
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # System prompt text
-with open('config/system_prompt.txt', 'r') as file:
-    # system_prompt = file.read()
-    system_prompt = ''
+with open(os.path.join(project_root, 'config', 'system_prompt.txt'), 'r') as file:
+    system_prompt = file.read()
+
+
 
 # Function to query OpenAI
 def query_openai(text, image_base64=None):

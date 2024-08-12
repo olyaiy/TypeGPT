@@ -14,9 +14,10 @@ __pycache__/
 typegpt.log
 nohup.out
 
+
 # Environment variables
-.env
-.env.local
+config/.env.local
+
 
 # Jupyter Notebook
 .ipynb_checkpoints/
