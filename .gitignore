@@ -1,17 +1,49 @@
+# Virtual environment
 myenv/
+
+# Python cache files
 __pycache__/
 *.py[cod]
 *$py.class
-.DS_Store
-gpt.log
-.env
-.ipynb_checkpoints/
-*.so
-*.log
-*.coverage
 
-node_modules/
+# macOS system files
+.DS_Store
+
+# Log files
+*.log
+typegpt.log
+nohup.out
+
+# Environment variables
+.env
+.env.local
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# C extensions
+*.so
+
+# Coverage reports
+.coverage
 coverage/
 
-keys.txt
+# Node.js
+node_modules/
 
+# Sensitive information
+config/keys.txt
+
+# IDE specific files (optional, uncomment if needed)
+# .vscode/
+# .idea/
+
+# Compiled Python files
+*.pyc
+
+# Backup files
+*~
+
+# Other unnecessary files
+*.swp
+*.swo
