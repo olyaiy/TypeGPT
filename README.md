@@ -1,5 +1,7 @@
 # TypeGPT
 
+Further updates coming soon! stay tuned :)
+
 June 29, 2024 update: Added support for Claude and Llama3 models, along with improved image handling capabilities!
 
 TypeGPT is a Python application that allows you to invoke various AI's and LLM's from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT, Google Gemini, Claude, or Llama3 with Ollama, using keyboard shortcuts.
