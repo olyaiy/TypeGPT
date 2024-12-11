@@ -113,7 +113,7 @@ def query_claude(text, image_base64=None):
             })
         
         response = anthropic.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-sonnet-latest",
             max_tokens=1024,
             system=system_prompt,
             messages=messages

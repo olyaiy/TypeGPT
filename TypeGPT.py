@@ -91,7 +91,7 @@ class TypeGPT:
         commands = {
             '/quit': self.quit,
             '/stop': self.stop_listening,
-            '/ask': lambda: self.set_mode('line'),
+            '/a': lambda: self.set_mode('line'),
             '/see': self.capture_screenshot,
             '/chatgpt': lambda: self.select_model('chatgpt'),
             '/gemini': lambda: self.select_model('gemini'),
@@ -150,7 +150,7 @@ class TypeGPT:
 
     def process_text(self, text):
         self.type_output(' ...\n')
-        prompt = text.strip()
+        prompt = text.replace('/a:', '').strip()
         image_base64 = None
         
         if '[IMAGE:' in prompt:
