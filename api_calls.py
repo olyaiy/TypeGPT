@@ -6,6 +6,7 @@ import base64
 import os
 from anthropic import Anthropic
 
+
 def read_api_keys(file_path):
    keys = {}
    with open(file_path, 'r') as file:
@@ -155,23 +156,45 @@ def query_llama3(text, image_base64=None):
     except requests.exceptions.RequestException as e:
         return f"Error in Ollama API call: {str(e)}"
 
+# Add this function before the api_call function
+
+def query_ollama(text, model_name, image_base64=None):
+    url = "http://localhost:11434/api/chat"
+    
+    payload = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": text
+            }
+        ],
+        "stream": False
+    }
+    
+    if image_base64:
+        payload["messages"][1]["images"] = [image_base64]
+    
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        return result['message']['content']
+    except requests.exceptions.RequestException as e:
+        return f"Error in Ollama API call: {str(e)}"
+
 # main function 
 def api_call(model, text, image_base64=None):
     api_functions = {
         'chatgpt': query_openai,
         'gemini': query_gemini,
         'claude': query_claude,
-        'llama3': query_llama3
-    }
-    
-    if model in api_functions:
-        return api_functions[model](text, image_base64)
-    else:
-        return f"Error: Unsupported model '{model}'"
-    api_functions = {
-        'chatgpt': query_openai,
-        'gemini': query_gemini,
-        'claude': query_claude
+        'llama3': query_llama3,
+        'o1': query_o1
     }
     
     if model.startswith('ollama:'):
@@ -181,3 +204,35 @@ def api_call(model, text, image_base64=None):
         return api_functions[model](text, image_base64)
     else:
         return f"Error: Unsupported model '{model}'"
+
+def query_o1(text, image_base64=None):
+    url = 'https://api.openai.com/v1/chat/completions'
+    headers = {
+        'Authorization': f'Bearer {OPENAI_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    messages = [
+        {"role": "user", "content": text}
+    ]
+    
+    if image_base64:
+        return "Warning: o1 model doesn't support image input yet."
+    
+    data = {
+        'model': 'o1-preview',
+        'messages': messages,
+        'max_completion_tokens': 32768
+    }
+    
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        response_data = response.json()
+        
+        if 'choices' in response_data and len(response_data['choices']) > 0:
+            return response_data['choices'][0]['message']['content']
+        else:
+            return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
+    except Exception as e:
+        return f"Error in o1 API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"

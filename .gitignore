@@ -9,9 +9,10 @@ gpt.log
 *.so
 *.log
 *.coverage
+.env
+keys.txt
 
 node_modules/
 coverage/
-
+.env
 keys.txt
-
