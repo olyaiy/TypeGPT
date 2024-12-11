@@ -173,7 +173,6 @@ class TypeGPT:
     def type_output(self, text):
         if text == ' ...\n':  # Loading animation for processing
             # Type the first two static dots
-
             self.keyboard_controller.press('.')
             self.keyboard_controller.release('.')
             self.keyboard_controller.press('.')
