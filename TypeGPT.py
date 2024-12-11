@@ -7,6 +7,7 @@ from api_calls import api_call
 import sys
 from PIL import Image, ImageGrab  # Updated import
 import io
+import time
 
 class TypeGPT:
     def __init__(self):
@@ -165,9 +166,32 @@ class TypeGPT:
         self.mode = None
 
     def type_output(self, text):
-        for char in text:
-            self.keyboard_controller.press(char)
-            self.keyboard_controller.release(char)
+        if text == ' ...\n':  # Loading animation for processing
+            # Type the first two static dots
+            self.keyboard_controller.press('.')
+            self.keyboard_controller.release('.')
+            self.keyboard_controller.press('.')
+            self.keyboard_controller.release('.')
+            
+            for _ in range(3):  # Animate between 2 and 3 dots
+                # Add third dot
+                self.keyboard_controller.press('.')
+                self.keyboard_controller.release('.')
+                time.sleep(0.25)  # Show three dots for 1 second
+                
+                # Remove third dot
+                self.keyboard_controller.press(keyboard.Key.backspace)
+                self.keyboard_controller.release(keyboard.Key.backspace)
+                time.sleep(0.25)  # Show two dots for 0.5 second
+            
+            # End with three dots and newline
+            self.keyboard_controller.press(keyboard.Key.enter)
+            self.keyboard_controller.release(keyboard.Key.enter)
+        else:
+            # Normal text output
+            for char in text:
+                self.keyboard_controller.press(char)
+                self.keyboard_controller.release(char)
 
     def run(self):
         with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
