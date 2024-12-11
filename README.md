@@ -87,6 +87,7 @@ Use the following keyboard shortcuts in ANY TEXT FIELD ( search bars, google doc
 - `/llama3`: Switch to Llama3 model.
 - `/check`: Check which model is currently active.
 - `/quit`: To quit the program. 
+- `/restart`: Restart the program to apply any code changes or reset its state.
 
 - `Shift + Cmd + Enter`: Send the text to the selected AI model when in listening mode.
 

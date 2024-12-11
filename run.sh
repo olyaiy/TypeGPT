@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# Activate the virtual environment
-source myenv/bin/activate
-
-# Run the program in the background
-nohup python3 TypeGPT.py &
-
-# Inform the user
-echo "Program is running in the background."
+while true; do
+    python3 TypeGPT.py
+    if [ $? -ne 42 ]; then  # If exit code is not 42 (our restart code)
+        break              # Exit the loop
+    fi
+done

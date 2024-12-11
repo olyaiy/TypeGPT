@@ -24,6 +24,7 @@ class TypeGPT:
         self.screenshot = None
         self.screenshot_base64 = None
         self.should_quit = False
+        self.should_restart = False
 
     def on_press(self, key):
         try:
@@ -44,8 +45,10 @@ class TypeGPT:
             self.special_keys['shift']):
             self.process_enter_key()
 
-        if self.should_quit:
+        if self.should_restart or self.should_quit:
             return False  # This will stop the listener
+
+        return True  # Keep the listener running otherwise
 
     def handle_special_keys(self, key, pressed):
         key_mapping = {
@@ -99,7 +102,8 @@ class TypeGPT:
             '/claude': lambda: self.select_model('claude'),
             '/llama3': lambda: self.select_model('llama3'),
             '/o1': lambda: self.select_model('o1'),
-            '/check': self.check_model
+            '/check': self.check_model,
+            '/restart': self.restart
         }
         
         for cmd, func in commands.items():
@@ -169,6 +173,11 @@ class TypeGPT:
     def type_output(self, text):
         if text == ' ...\n':  # Loading animation for processing
             # Type the first two static dots
+
+            self.keyboard_controller.press('.')
+            self.keyboard_controller.release('.')
+            self.keyboard_controller.press('.')
+            self.keyboard_controller.release('.')
             self.keyboard_controller.press('.')
             self.keyboard_controller.release('.')
             self.keyboard_controller.press('.')
@@ -194,12 +203,19 @@ class TypeGPT:
                 self.keyboard_controller.press(char)
                 self.keyboard_controller.release(char)
 
+    def restart(self):
+        self.type_output(' ...restarting.')
+        self.should_restart = True
+        self.should_quit = True
+
     def run(self):
         with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
             listener.join()
         
-        if self.should_quit:
-            sys.exit(0)  # Properly exit the program
+        if self.should_restart:
+            sys.exit(42)  # Special exit code for restart
+        elif self.should_quit:
+            sys.exit(0)   # Normal exit
 
 if __name__ == "__main__":
     typegpt = TypeGPT()
