@@ -8,6 +8,7 @@ import sys
 from PIL import Image, ImageGrab  # Updated import
 import io
 import time
+import platform
 
 class TypeGPT:
     def __init__(self):
@@ -216,6 +217,25 @@ class TypeGPT:
         elif self.should_quit:
             sys.exit(0)   # Normal exit
 
+def check_permissions():
+    if platform.system() == 'Darwin':  # macOS
+        try:
+            # Check if we can monitor keyboard events
+            with keyboard.Listener(on_press=lambda k: None) as listener:
+                if not listener.is_alive():
+                    print("\nAccessibility Permissions Required!")
+                    print("\nPlease follow these steps to enable accessibility access:")
+                    print("1. Open System Preferences/Settings")
+                    print("2. Go to Security & Privacy > Privacy > Accessibility")
+                    print("3. Click the lock icon to make changes")
+                    print("4. Add and enable your Python/Terminal application")
+                    print("\nAfter granting permissions, please restart the application.")
+                    sys.exit(1)
+        except Exception as e:
+            print(f"Permission check failed: {e}")
+            sys.exit(1)
+
 if __name__ == "__main__":
+    check_permissions()  # Add this line before creating TypeGPT instance
     typegpt = TypeGPT()
     typegpt.run()
