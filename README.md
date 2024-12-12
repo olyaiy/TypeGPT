@@ -19,6 +19,73 @@ https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0
 - **Clipboard Integration**: Utilize the clipboard for larger text inputs and image pasting.
 - **Screenshot Capability**: Capture and include screenshots in your queries.
 
+## Advanced Features
+
+### Image Support
+- Support for image-based queries across all AI models
+- Paste images directly using clipboard (Cmd/Ctrl+V)
+- Screenshot capture for visual context (/see command)
+- Automatic image format conversion and base64 encoding
+
+### Model-Specific Features
+- ChatGPT: Uses GPT-4 Turbo with vision capabilities
+- Gemini: Uses gemini-1.0-pro-vision-latest for enhanced visual understanding
+- Claude: Implements Claude 3.5 Sonnet with multimodal support
+- Llama3: Local inference through Ollama with image processing
+- O1: Access to OpenAI's O1 preview model (text-only)
+
+### Input Modes
+- Line Mode: Standard text input mode activated with `/a`
+- Screenshot Mode: Visual input mode activated with `/see`
+- Clipboard Support: Paste text or images with Cmd/Ctrl+V
+
+### Keyboard Controls
+- Send Query: `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux)
+- Cancel Input: `Esc`
+- Paste Content: `Cmd/Ctrl+V`
+
+## GUI Manager Features
+- Real-time program status monitoring
+- Easy API key management
+- Start/Stop controls for TypeGPT
+- Automatic key file creation and management
+- Visual feedback for program state
+
+## System Requirements
+
+### For Windows/Linux
+- Python 3.x
+- Tkinter support (usually included with Python)
+- Administrative privileges for keyboard monitoring
+
+### For macOS
+- Python 3.x
+- Accessibility permissions (required for keyboard monitoring)
+- Tkinter support
+- Administrative privileges
+
+## Error Handling
+- Automatic permission checking on startup
+- Graceful error handling for API failures
+- Clear error messages for missing API keys
+- Automatic restart capability
+
+## Configuration Files
+1. `keys.txt`: Stores API keys in format:
+```txt
+OPENAI_API_KEY=your_key_here
+GEMINI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+```
+
+2. `system_prompt.txt`: Customize AI behavior (optional)
+
+## Performance Notes
+- Minimal CPU usage when idle
+- Efficient clipboard handling
+- Optimized image processing
+- Local processing for screenshots and keyboard monitoring
+
 ## Prerequisites
 
 Before you can run the application, ensure you have the following installed:
