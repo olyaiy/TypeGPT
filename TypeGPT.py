@@ -36,12 +36,14 @@ class TypeGPT:
             pass
 
     def on_release(self, key):
-        #if key == keyboard.Key.esc:
-        #    return False
+        if key == keyboard.Key.esc:
+            return False
         
         self.handle_special_keys(key, pressed=False)
 
-        if (key == keyboard.Key.enter):
+        if (key == keyboard.Key.enter and 
+            self.special_keys['command'] and 
+            self.special_keys['shift']):
             self.process_enter_key()
 
         if self.should_restart or self.should_quit:
@@ -52,9 +54,6 @@ class TypeGPT:
     def handle_special_keys(self, key, pressed):
         key_mapping = {
             keyboard.Key.cmd: 'command',
-            keyboard.Key.ctrl: 'command',
-            keyboard.Key.ctrl_l: 'command',
-            keyboard.Key.ctrl_r: 'command',
             keyboard.Key.shift: 'shift',
         }
         
