@@ -20,47 +20,53 @@ OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
 GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
 ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
 
+# Model versions (update these to swap models)
+OPENAI_MODEL = 'gpt-6-astra'
+ANTHROPIC_MODEL = 'claude-fable-5-1'
+
 # System prompt text
 with open('system_prompt.txt', 'r') as file:
     # system_prompt = file.read()
     system_prompt = ''
 
-# Function to query OpenAI
+# Function to query OpenAI (Responses API)
 def query_openai(text, image_base64=None):
-    url = 'https://api.openai.com/v1/chat/completions'
+    url = 'https://api.openai.com/v1/responses'
     headers = {
         'Authorization': f'Bearer {OPENAI_API_KEY}',
         'Content-Type': 'application/json'
     }
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": [{"type": "text", "text": text}]}
-    ]
-    
+
+    content = [{"type": "input_text", "text": text}]
     if image_base64:
-        messages[1]["content"].append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/png;base64,{image_base64}",
-                "detail": "high"
-            }
+        content.append({
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{image_base64}",
+            "detail": "high"
         })
-    
+
     data = {
-        'model': 'gpt-4-turbo',
-        'messages': messages,
+        'model': OPENAI_MODEL,
+        'input': [{"role": "user", "content": content}],
     }
-    
+    if system_prompt:
+        data['instructions'] = system_prompt
+
     try:
         response = post(url, json=data, headers=headers)
         response.raise_for_status()
         response_data = response.json()
-        
-        if 'choices' in response_data and len(response_data['choices']) > 0:
-            return response_data['choices'][0]['message']['content']
-        else:
-            return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
+
+        texts = [
+            part.get('text', '')
+            for item in response_data.get('output', [])
+            if item.get('type') == 'message'
+            for part in item.get('content', [])
+            if part.get('type') == 'output_text'
+        ]
+        if texts:
+            return ''.join(texts)
+        return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
     except Exception as e:
         return f"Error in API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"
 
@@ -114,8 +120,8 @@ def query_claude(text, image_base64=None):
             })
         
         response = anthropic.messages.create(
-            model="claude-3-5-sonnet-latest",
-            max_tokens=1024,
+            model=ANTHROPIC_MODEL,
+            max_tokens=4096,
             system=system_prompt,
             messages=messages
         )
@@ -205,34 +211,6 @@ def api_call(model, text, image_base64=None):
     else:
         return f"Error: Unsupported model '{model}'"
 
+# o1-preview has been retired; /o1 now routes to the latest OpenAI model
 def query_o1(text, image_base64=None):
-    url = 'https://api.openai.com/v1/chat/completions'
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    messages = [
-        {"role": "user", "content": text}
-    ]
-    
-    if image_base64:
-        return "Warning: o1 model doesn't support image input yet."
-    
-    data = {
-        'model': 'o1-preview',
-        'messages': messages,
-        'max_completion_tokens': 32768
-    }
-    
-    try:
-        response = requests.post(url, json=data, headers=headers)
-        response.raise_for_status()
-        response_data = response.json()
-        
-        if 'choices' in response_data and len(response_data['choices']) > 0:
-            return response_data['choices'][0]['message']['content']
-        else:
-            return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
-    except Exception as e:
-        return f"Error in o1 API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"
+    return query_openai(text, image_base64)
