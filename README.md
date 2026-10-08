@@ -28,11 +28,10 @@ https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0
 - Automatic image format conversion and base64 encoding
 
 ### Model-Specific Features
-- ChatGPT: Uses GPT-6 Astra (`gpt-6-astra`) via the Responses API, with vision
+- ChatGPT: Uses GPT-6.1 Sol (`gpt-6.1-sol`) via the Responses API, with vision
 - Gemini: Uses gemini-1.0-pro-vision-latest for enhanced visual understanding
-- Claude: Uses Claude Fable 5.1 (`claude-fable-5-1`) with multimodal support
+- Claude: Uses Claude Opus 5.5 (`claude-opus-5-5`) with multimodal support
 - Llama3: Local inference through Ollama with image processing
-- O1: `o1-preview` has been retired, so `/o1` now uses the same OpenAI model as `/chatgpt`
 
 ### Input Modes
 - Line Mode: Standard text input mode activated with `/a`
@@ -143,7 +142,6 @@ Use the following commands in any text field:
 - `/gemini`: Switch to Google Gemini model
 - `/claude`: Switch to Claude model
 - `/llama3`: Switch to Llama3 model
-- `/o1`: Alias for the latest OpenAI model (o1-preview is retired)
 - `/check`: Check which model is currently active
 
 ### Sending Queries
@@ -159,9 +157,9 @@ Use the following commands in any text field:
 2. System Prompt: Modify the `system_prompt.txt` file to customize the behavior and responses of your AI based on your needs. 
 
 3. AI Model Versions: You can change the versions of the AI models via `OPENAI_MODEL` and `ANTHROPIC_MODEL` at the top of `api_calls.py`. Currently, the defaults are:
-- ChatGPT: gpt-6-astra
+- ChatGPT: gpt-6.1-sol
 - Gemini: gemini-1.0-pro-vision-latest
-- Claude: claude-fable-5-1
+- Claude: claude-opus-5-5
 - Llama3: Uses the local Ollama instance
 
 ## Contributing

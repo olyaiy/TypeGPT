@@ -21,8 +21,8 @@ GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
 ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
 
 # Model versions (update these to swap models)
-OPENAI_MODEL = 'gpt-6-astra'
-ANTHROPIC_MODEL = 'claude-fable-5-1'
+OPENAI_MODEL = 'gpt-6.1-sol'
+ANTHROPIC_MODEL = 'claude-opus-5-5'
 
 # System prompt text
 with open('system_prompt.txt', 'r') as file:
@@ -200,7 +200,6 @@ def api_call(model, text, image_base64=None):
         'gemini': query_gemini,
         'claude': query_claude,
         'llama3': query_llama3,
-        'o1': query_o1
     }
     
     if model.startswith('ollama:'):
@@ -210,7 +209,3 @@ def api_call(model, text, image_base64=None):
         return api_functions[model](text, image_base64)
     else:
         return f"Error: Unsupported model '{model}'"
-
-# o1-preview has been retired; /o1 now routes to the latest OpenAI model
-def query_o1(text, image_base64=None):
-    return query_openai(text, image_base64)

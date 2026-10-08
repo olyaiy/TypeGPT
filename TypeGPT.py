@@ -102,7 +102,6 @@ class TypeGPT:
             '/gemini': lambda: self.select_model('gemini'),
             '/claude': lambda: self.select_model('claude'),
             '/llama3': lambda: self.select_model('llama3'),
-            '/o1': lambda: self.select_model('o1'),
             '/check': self.check_model,
             '/restart': self.restart
         }
@@ -138,7 +137,7 @@ class TypeGPT:
             self.type_output(": ")
 
     def select_model(self, model):
-        if model in ['chatgpt', 'gemini', 'claude', 'llama3', 'o1']:
+        if model in ['chatgpt', 'gemini', 'claude', 'llama3']:
             self.model = model
             self.listening = False
             self.type_output(f' ... {model.capitalize()} selected.')
