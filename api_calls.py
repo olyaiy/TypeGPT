@@ -1,211 +1,99 @@
+"""Model providers. Each one takes (prompt, image_png_b64, settings) and returns the reply text.
+
+Every provider raises on failure; the caller decides how to report the error.
+"""
 import requests
-from requests import post
-import google.generativeai as genai
-import json
-import base64
-import os
-from anthropic import Anthropic
+
+import config
 
 
-def read_api_keys(file_path):
-   keys = {}
-   with open(file_path, 'r') as file:
-       for line in file:
-           key, value = line.strip().split('=')
-           keys[key] = value
-   return keys
+def _post(url, settings, **kwargs):
+    response = requests.post(url, timeout=float(settings['TYPEGPT_TIMEOUT']), **kwargs)
+    if not response.ok:
+        raise RuntimeError(f'{response.status_code} from {url}: {response.text[:500]}')
+    return response.json()
 
-api_keys = read_api_keys('keys.txt')
-OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
-GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
-ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
 
-# Model versions (update these to swap models)
-OPENAI_MODEL = 'gpt-6.1-sol'
-ANTHROPIC_MODEL = 'claude-opus-5-5'
+def query_openai(prompt, image_b64, settings):
+    content = [{'type': 'input_text', 'text': prompt}]
+    if image_b64:
+        content.append({'type': 'input_image', 'image_url': f'data:image/png;base64,{image_b64}'})
+    body = {'model': settings['OPENAI_MODEL'], 'input': [{'role': 'user', 'content': content}]}
+    if system := config.system_prompt():
+        body['instructions'] = system
+    data = _post(
+        'https://api.openai.com/v1/responses', settings, json=body,
+        headers={'Authorization': f"Bearer {config.get(settings, 'OPENAI_API_KEY')}"},
+    )
+    return ''.join(
+        part.get('text', '')
+        for item in data.get('output', []) if item.get('type') == 'message'
+        for part in item.get('content', []) if part.get('type') == 'output_text'
+    )
 
-# System prompt text
-with open('system_prompt.txt', 'r') as file:
-    # system_prompt = file.read()
-    system_prompt = ''
 
-# Function to query OpenAI (Responses API)
-def query_openai(text, image_base64=None):
-    url = 'https://api.openai.com/v1/responses'
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json'
+def query_claude(prompt, image_b64, settings):
+    content = [{'type': 'text', 'text': prompt}]
+    if image_b64:
+        content.insert(0, {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png', 'data': image_b64}})
+    body = {
+        'model': settings['ANTHROPIC_MODEL'],
+        'max_tokens': int(settings['TYPEGPT_MAX_TOKENS']),
+        'messages': [{'role': 'user', 'content': content}],
     }
-
-    content = [{"type": "input_text", "text": text}]
-    if image_base64:
-        content.append({
-            "type": "input_image",
-            "image_url": f"data:image/png;base64,{image_base64}",
-            "detail": "high"
-        })
-
-    data = {
-        'model': OPENAI_MODEL,
-        'input': [{"role": "user", "content": content}],
-    }
-    if system_prompt:
-        data['instructions'] = system_prompt
-
-    try:
-        response = post(url, json=data, headers=headers)
-        response.raise_for_status()
-        response_data = response.json()
-
-        texts = [
-            part.get('text', '')
-            for item in response_data.get('output', [])
-            if item.get('type') == 'message'
-            for part in item.get('content', [])
-            if part.get('type') == 'output_text'
-        ]
-        if texts:
-            return ''.join(texts)
-        return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
-    except Exception as e:
-        return f"Error in API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"
-
-# Function to query Gemini
-def query_gemini(input_text, image_base64=None):
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        generation_config = {
-            "temperature": 1,
-            "top_p": 0.95,
-            "top_k": 64,
-            "max_output_tokens": 8192,
-        }
-        model = genai.GenerativeModel(
-            model_name="gemini-1.0-pro-vision-latest",
-            generation_config=generation_config,
-        )
-        
-        prompt_parts = [system_prompt, input_text]
-        if image_base64:
-            image_parts = [
-                {
-                    "mime_type": "image/png",
-                    "data": image_base64
-                }
-            ]
-            prompt_parts.extend(image_parts)
-        
-        response = model.generate_content(prompt_parts)
-        return response.text
-    except Exception as e:
-        return f"Error in Gemini API call: {str(e)}"
-
-# Function to query Claude
-def query_claude(text, image_base64=None):
-    try:
-        anthropic = Anthropic(api_key=ANTHROPIC_API_KEY)
-        
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": text}]}
-        ]
-        
-        if image_base64:
-            messages[0]["content"].insert(0, {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": image_base64
-                }
-            })
-        
-        response = anthropic.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages
-        )
-        
-        return response.content[0].text
-    except Exception as e:
-        return f"Error in Claude API call: {str(e)}"
+    if system := config.system_prompt():
+        body['system'] = system
+    data = _post(
+        'https://api.anthropic.com/v1/messages', settings, json=body,
+        headers={'x-api-key': config.get(settings, 'ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01'},
+    )
+    return ''.join(block.get('text', '') for block in data.get('content', []) if block.get('type') == 'text')
 
 
+def query_gemini(prompt, image_b64, settings):
+    parts = [{'text': prompt}]
+    if image_b64:
+        parts.append({'inline_data': {'mime_type': 'image/png', 'data': image_b64}})
+    body = {'contents': [{'role': 'user', 'parts': parts}]}
+    if system := config.system_prompt():
+        body['system_instruction'] = {'parts': [{'text': system}]}
+    model = settings['GEMINI_MODEL']
+    data = _post(
+        f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', settings, json=body,
+        headers={'x-goog-api-key': config.get(settings, 'GEMINI_API_KEY')},
+    )
+    candidates = data.get('candidates') or [{}]
+    return ''.join(p.get('text', '') for p in candidates[0].get('content', {}).get('parts', []))
 
-# Function to query Ollama's llama3 model
-def query_llama3(text, image_base64=None):
-    url = "http://localhost:11434/api/chat"
-    
-    payload = {
-        "model": "llama3",
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": text
-            }
-        ],
-        "stream": False
-    }
-    
-    if image_base64:
-        payload["messages"][1]["images"] = [image_base64]
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        return result['message']['content']
-    except requests.exceptions.RequestException as e:
-        return f"Error in Ollama API call: {str(e)}"
 
-# Add this function before the api_call function
+def query_ollama(prompt, image_b64, settings):
+    messages = []
+    if system := config.system_prompt():
+        messages.append({'role': 'system', 'content': system})
+    user = {'role': 'user', 'content': prompt}
+    if image_b64:
+        user['images'] = [image_b64]
+    messages.append(user)
+    data = _post(
+        f"{settings['OLLAMA_URL'].rstrip('/')}/api/chat", settings,
+        json={'model': settings['OLLAMA_MODEL'], 'messages': messages, 'stream': False},
+    )
+    return data['message']['content']
 
-def query_ollama(text, model_name, image_base64=None):
-    url = "http://localhost:11434/api/chat"
-    
-    payload = {
-        "model": model_name,
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": text
-            }
-        ],
-        "stream": False
-    }
-    
-    if image_base64:
-        payload["messages"][1]["images"] = [image_base64]
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        return result['message']['content']
-    except requests.exceptions.RequestException as e:
-        return f"Error in Ollama API call: {str(e)}"
 
-# main function 
-def api_call(model, text, image_base64=None):
-    api_functions = {
-        'chatgpt': query_openai,
-        'gemini': query_gemini,
-        'claude': query_claude,
-        'llama3': query_llama3,
-    }
-    
-    if model.startswith('ollama:'):
-        ollama_model = model.split(':', 1)[1]
-        return query_ollama(text, ollama_model, image_base64)
-    elif model in api_functions:
-        return api_functions[model](text, image_base64)
-    else:
-        return f"Error: Unsupported model '{model}'"
+PROVIDERS = {
+    'claude': query_claude,
+    'chatgpt': query_openai,
+    'gemini': query_gemini,
+    'llama3': query_ollama,
+}
+
+# Extra names accepted as /commands
+ALIASES = {'gpt': 'chatgpt', 'openai': 'chatgpt', 'llama': 'llama3', 'ollama': 'llama3'}
+
+
+def api_call(provider, prompt, image_b64, settings):
+    reply = PROVIDERS[provider](prompt, image_b64, settings)
+    if not reply.strip():
+        raise RuntimeError(f'{provider} returned an empty reply')
+    return reply

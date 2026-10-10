@@ -1,20 +1,14 @@
+# Environments
+.venv/
 myenv/
 __pycache__/
 *.py[cod]
-*$py.class
-.DS_Store
-gpt.log
-.env
-.ipynb_checkpoints/
-*.so
-*.log
-*.coverage
-.env
-keys.txt
 
-node_modules/
-coverage/
+# Secrets
+keys.txt
 .env
-keys.txt
-keys.txt
-keys.txt
+
+# OS / tooling
+.DS_Store
+*.log
+nohup.out
