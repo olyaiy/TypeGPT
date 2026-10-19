@@ -1,168 +1,126 @@
 # TypeGPT
 
-Dec 11, 2024 update: Added support for Claude and Llama3 models, along with improved image handling capabilities and a new GUI manager!
+Oct 2026 update: TypeGPT now supports Claude Opus 5.5, Claude Sonnet 5.5, GPT-6.1 Sol, DeepSeek Flash and Gemini 4 Argon. Models are configured in `models.toml`, installation uses [uv](https://docs.astral.sh/uv/), and input handling got a round of fixes (spaces, backspace, `/` in prompts, Esc, Ctrl on Windows/Linux, and `/see` screenshots).
 
-TypeGPT is a Python application that allows you to invoke various AI's and LLM's from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with ChatGPT, Google Gemini, Claude, or Llama3 with Ollama, using keyboard shortcuts.
+TypeGPT is a Python application that allows you to invoke various AI's and LLM's from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with Claude, ChatGPT, DeepSeek, Google Gemini, or local models with Ollama, using keyboard shortcuts.
 
 
 https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0a94156
 
 
-
-
 ## Features
 
 - **Global Accessibility**: Invoke AI models from any text input field across your system.
-- **Multiple AI Models**: Support for ChatGPT, Google Gemini, Claude, and Llama3.
+- **Multiple AI Models**: Claude, GPT, DeepSeek, Gemini, and local models through Ollama.
+- **Configurable Models**: Add or change models in `models.toml` without touching code.
 - **GUI Manager**: Easy-to-use interface for managing API keys and program status.
 - **Keyboard Shortcuts**: Use simple keyboard shortcuts to communicate with AI models.
 - **Clipboard Integration**: Utilize the clipboard for larger text inputs and image pasting.
 - **Screenshot Capability**: Capture and include screenshots in your queries.
 
-## Advanced Features
+## Models
 
-### Image Support
-- Support for image-based queries across all AI models
-- Paste images directly using clipboard (Cmd/Ctrl+V)
-- Screenshot capture for visual context (/see command)
-- Automatic image format conversion and base64 encoding
+| Command | Model | Provider |
+|---|---|---|
+| `/opus` (default, also `/claude`) | `claude-opus-5-5` | Anthropic |
+| `/sonnet` | `claude-sonnet-5-5` | Anthropic |
+| `/gpt` (also `/chatgpt`) | `gpt-6.1-sol` | OpenAI |
+| `/deepseek` | `deepseek-flash` | DeepSeek |
+| `/gemini` | `gemini-4-argon` | Google |
+| `/llama3` | `llama3` | Ollama (local) |
 
-### Model-Specific Features
-- ChatGPT: Uses GPT-4 Turbo with vision capabilities
-- Gemini: Uses gemini-1.0-pro-vision-latest for enhanced visual understanding
-- Claude: Implements Claude 3.5 Sonnet with multimodal support
-- Llama3: Local inference through Ollama with image processing
-- O1: Access to OpenAI's O1 preview model (text-only)
+To add a model, add an entry to `models.toml`:
 
-### Input Modes
-- Line Mode: Standard text input mode activated with `/a`
-- Screenshot Mode: Visual input mode activated with `/see`
-- Clipboard Support: Paste text or images with Cmd/Ctrl+V
-
-### Keyboard Controls
-- Send Query: `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux)
-- Cancel Input: `Esc`
-- Paste Content: `Cmd/Ctrl+V`
-
-## GUI Manager Features
-- Real-time program status monitoring
-- Easy API key management
-- Start/Stop controls for TypeGPT
-- Automatic key file creation and management
-- Visual feedback for program state
-
-## System Requirements
-
-### For Windows/Linux
-- Python 3.x
-- Tkinter support (usually included with Python)
-- Administrative privileges for keyboard monitoring
-
-### For macOS
-- Python 3.x
-- Accessibility permissions (required for keyboard monitoring)
-- Tkinter support
-- Administrative privileges
-
-## Error Handling
-- Automatic permission checking on startup
-- Graceful error handling for API failures
-- Clear error messages for missing API keys
-- Automatic restart capability
-
-## Configuration Files
-1. `keys.txt`: Stores API keys in format:
-```txt
-OPENAI_API_KEY=your_key_here
-GEMINI_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
+```toml
+[models.haiku]
+provider = "anthropic"   # anthropic | openai | deepseek | gemini | ollama
+model = "claude-haiku-5-5"
 ```
 
-2. `system_prompt.txt`: Customize AI behavior (optional)
-
-## Performance Notes
-- Minimal CPU usage when idle
-- Efficient clipboard handling
-- Optimized image processing
-- Local processing for screenshots and keyboard monitoring
-
-## Prerequisites
-
-Before you can run the application, ensure you have the following installed:
-- Python 3.x
-- Required packages (install via pip):
-  ```bash
-  pip install pynput requests pyperclip google.generativeai anthropic Pillow tkinter
-  ```
-
-You also need to have API keys for the AI services you plan to use. You can get yours at:
-- ChatGPT: https://openai.com/api/
-- Google Gemini: https://ai.google.dev/aistudio
-- Claude: https://www.anthropic.com/
-- Llama3: Ensure you have Ollama installed and running locally (http://localhost:11434)
+It's then available as `/haiku`. Any model you've pulled in Ollama works the same way with `provider = "ollama"`.
 
 ## Installation
-1. Clone the repository:
+
+Requires macOS, Windows or Linux. [uv](https://docs.astral.sh/uv/) installs Python 3.12 and all dependencies for you.
+
 ```bash
 git clone https://github.com/olyaiy/TypeGPT.git
 cd TypeGPT
+./install.sh
 ```
 
-2. Run the GUI manager to set up your API keys:
-```bash
-python typegpt_gui.py
+`install.sh` offers to install uv if you don't have it, runs `uv sync`, and creates `keys.txt` from `keys.template.txt`. On Windows, install uv yourself and run `uv sync`.
+
+### API keys
+
+Add the keys for the providers you use to `keys.txt` (or in the GUI's API Keys tab). You only need keys for the models you use:
+
+```txt
+ANTHROPIC_API_KEY=your_key_here
+OPENAI_API_KEY=your_key_here
+DEEPSEEK_API_KEY=your_key_here
+GEMINI_API_KEY=your_key_here
 ```
+
+Get them at:
+- Claude: https://platform.claude.com/
+- OpenAI: https://platform.openai.com/
+- DeepSeek: https://platform.deepseek.com/
+- Google Gemini: https://ai.google.dev/aistudio
+- Local models: install [Ollama](https://ollama.com/download) and keep it running (http://localhost:11434)
+
+`keys.txt` is gitignored.
+
+### macOS permissions
+TypeGPT needs to watch and type keystrokes:
+
+1. Open System Settings > Privacy & Security
+2. Under **Accessibility** and **Input Monitoring**, add and enable the app you run TypeGPT from (e.g. Terminal, iTerm, or VS Code)
+3. Restart TypeGPT
+
+TypeGPT checks Accessibility access on startup and tells you if it's missing.
 
 ## Running the Program
 
 ### Option 1: Using the GUI Manager
-1. Launch the GUI manager:
 ```bash
-python typegpt_gui.py
+./run.sh
 ```
-2. Enter your API keys in the "API Keys" tab
-3. Use the "Program Status" tab to start/stop TypeGPT
+1. Enter your API keys in the "API Keys" tab
+2. Use the "Program Status" tab to start/stop TypeGPT
 
 ### Option 2: Direct Launch
 ```bash
-python TypeGPT.py
+./run.sh --no-gui
 ```
 
 ## Usage
 Use the following commands in any text field:
 
 ### Basic Commands
-- `/a`: Start listening for input (line mode)
-- `/see`: Capture screenshot for visual queries
+- `/a`: Start a prompt
+- `/see`: Capture a screenshot and start a prompt about it
 - `/stop`: Stop listening
 - `/quit`: Quit the program
 - `/restart`: Restart the program
-
-### Model Selection
-- `/chatgpt`: Switch to ChatGPT model
-- `/gemini`: Switch to Google Gemini model
-- `/claude`: Switch to Claude model
-- `/llama3`: Switch to Llama3 model
-- `/o1`: Switch to OpenAI's O1 model
 - `/check`: Check which model is currently active
+- `/<model>`: Switch models (see [Models](#models))
 
 ### Sending Queries
-1. Type `/a` to start input mode
-2. Type your prompt
+1. Type `/a` (or `/see` to include a screenshot)
+2. Type your prompt. You can use `/`, spaces, and Backspace normally
 3. Press `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux) to send
 4. Wait for the response to be typed out
 
-## Configuration
+### Keyboard Controls
+- Send Query: `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux)
+- Cancel Input: `Esc`
+- Paste Content: `Cmd/Ctrl+V` (text or images)
 
-1. API Keys: Copy `keys.template.txt` to `keys.txt` and update with your API keys. The `keys.txt` file is gitignored for security.
-
-2. System Prompt: Modify the `system_prompt.txt` file to customize the behavior and responses of your AI based on your needs. 
-
-3. AI Model Versions: You can change the versions of the AI models in the `api_calls.py` file. Currently, the defaults are:
-- ChatGPT: gpt-4-turbo
-- Gemini: gemini-1.0-pro-vision-latest
-- Claude: claude-3-5-sonnet-20240620
-- Llama3: Uses the local Ollama instance
+## Configuration Files
+1. `keys.txt`: API keys (see above)
+2. `models.toml`: Available models, commands, and the default model
+3. `system_prompt.txt`: Custom system prompt (not sent to models yet)
 
 ## Contributing
 
@@ -174,15 +132,3 @@ We plan on adding support for more AI models and improving the user interface. I
 ## License
 
 Distributed under the Apache 2.0 License. See `LICENSE` for more information.
-
-## Setup
-
-### macOS Users
-TypeGPT requires accessibility permissions to monitor keyboard input:
-
-1. When you first run the application, you'll be prompted to grant accessibility permissions
-2. Open System Preferences/Settings
-3. Navigate to Security & Privacy > Privacy > Accessibility
-4. Click the lock icon to make changes
-5. Add and enable your Terminal application or Python.app
-6. Restart TypeGPT

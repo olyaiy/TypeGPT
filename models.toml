@@ -1,0 +1,35 @@
+# Models TypeGPT can use. Each [models.<name>] entry becomes a /<name> command.
+#
+#   provider = anthropic | openai | deepseek | gemini | ollama
+#   model    = the provider's model ID
+#   aliases  = extra commands that select the same model (optional)
+#
+# To try a new model, add an entry here; no code changes needed.
+
+default = "opus"
+
+[models.opus]
+provider = "anthropic"
+model = "claude-opus-5-5"
+aliases = ["claude"]
+
+[models.sonnet]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+
+[models.gpt]
+provider = "openai"
+model = "gpt-6.1-sol"
+aliases = ["chatgpt"]
+
+[models.deepseek]
+provider = "deepseek"
+model = "deepseek-flash"
+
+[models.gemini]
+provider = "gemini"
+model = "gemini-4-argon"
+
+[models.llama3]
+provider = "ollama"
+model = "llama3"

@@ -3,6 +3,12 @@ from tkinter import ttk, messagebox
 import subprocess
 import os
 import signal
+import sys
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+KEYS_FILE = BASE_DIR / 'keys.txt'
+RESTART_EXIT_CODE = 42
 
 class TypeGPTGUI:
     def __init__(self, master):
@@ -37,13 +43,13 @@ class TypeGPTGUI:
         self.keys_frame.grid_columnconfigure(1, weight=1)
         
         self.key_entries = {}
-        keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"]
+        keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"]
 
         for i, key in enumerate(keys):
             label = ttk.Label(self.keys_frame, text=f"{key}:", font=('Arial', 10))
             label.grid(row=i, column=0, padx=10, pady=10, sticky="e")
 
-            entry = ttk.Entry(self.keys_frame, width=40)
+            entry = ttk.Entry(self.keys_frame, width=40, show="*")
             entry.grid(row=i, column=1, padx=10, pady=10, sticky="ew")
             self.key_entries[key] = entry
 
@@ -89,17 +95,19 @@ class TypeGPTGUI:
 
     def load_keys(self):
         try:
-            with open('keys.txt', 'r') as file:
+            with open(KEYS_FILE, 'r') as file:
                 for line in file:
-                    key, value = line.strip().split('=')
+                    if '=' not in line:
+                        continue
+                    key, value = line.strip().split('=', 1)
                     if key in self.key_entries:
                         self.key_entries[key].delete(0, tk.END)
                         self.key_entries[key].insert(0, value)
         except FileNotFoundError:
-            messagebox.showwarning("Warning", "keys.txt not found. Creating a new file.")
+            messagebox.showwarning("Warning", "keys.txt not found. Enter your keys and click Save Keys.")
 
     def save_keys(self):
-        with open('keys.txt', 'w') as file:
+        with open(KEYS_FILE, 'w') as file:
             for key, entry in self.key_entries.items():
                 file.write(f"{key}={entry.get()}\n")
         messagebox.showinfo("Success", "API keys saved successfully!")
@@ -112,7 +120,7 @@ class TypeGPTGUI:
                 self.stop_button.config(state="normal")
                 self.master.update()
                 
-                self.process = subprocess.Popen(['python', 'TypeGPT.py'])
+                self._launch()
                 
                 self.master.after(500, self._check_process_status)
             except Exception as e:
@@ -121,9 +129,17 @@ class TypeGPTGUI:
                 self.start_button.config(state="normal")
                 self.stop_button.config(state="disabled")
 
+    def _launch(self):
+        self.process = subprocess.Popen([sys.executable, str(BASE_DIR / 'TypeGPT.py')], cwd=BASE_DIR)
+        self.status_label.config(text="Status: Running")
+
     def _check_process_status(self):
         if self.process:
-            if self.process.poll() is not None:
+            exit_code = self.process.poll()
+            if exit_code == RESTART_EXIT_CODE:
+                self._launch()
+                self.master.after(1000, self._check_process_status)
+            elif exit_code is not None:
                 self.process = None
                 self.status_label.config(text="Status: Not Running")
                 self.start_button.config(state="normal")

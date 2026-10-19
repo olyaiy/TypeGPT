@@ -1,15 +1,16 @@
 [project]
 name = "typegpt"
-version = "0.1.0"
+version = "0.2.0"
 description = "TypeGPT is a Python application that allows you to invoke various AI's and LLM's from any text field in your operating system."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "anthropic>=0.49.0",
-    "google-generativeai>=0.8.4",
-    "pillow>=11.1.0",
+    "anthropic>=1.15.0",
+    "google-genai>=2.31.0",
+    "openai>=3.35.1",
+    "pillow>=13.0.0",
     "pyautogui>=0.9.54",
-    "pynput>=1.8.1",
-    "pyperclip>=1.9.0",
-    "requests>=2.32.3",
+    "pynput>=1.8.2",
+    "pyperclip>=1.11.0",
+    "requests>=2.34.2",
 ]

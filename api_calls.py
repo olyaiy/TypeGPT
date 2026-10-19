@@ -1,137 +1,159 @@
-import requests
-from requests import post
-import google.generativeai as genai
-import json
 import base64
-import os
+import tomllib
+from pathlib import Path
+
+import requests
 from anthropic import Anthropic
+from google import genai
+from google.genai import types
+from openai import OpenAI
+
+BASE_DIR = Path(__file__).resolve().parent
+
+KEY_NAMES = {
+    'anthropic': 'ANTHROPIC_API_KEY',
+    'openai': 'OPENAI_API_KEY',
+    'deepseek': 'DEEPSEEK_API_KEY',
+    'gemini': 'GEMINI_API_KEY',
+}
 
 
 def read_api_keys(file_path):
-   keys = {}
-   with open(file_path, 'r') as file:
-       for line in file:
-           key, value = line.strip().split('=')
-           keys[key] = value
-   return keys
+    keys = {}
+    try:
+        with open(file_path, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                keys[key.strip()] = value.strip()
+    except FileNotFoundError:
+        pass
+    return keys
 
-api_keys = read_api_keys('keys.txt')
-OPENAI_API_KEY = api_keys['OPENAI_API_KEY']
-GEMINI_API_KEY = api_keys['GEMINI_API_KEY']
-ANTHROPIC_API_KEY = api_keys['ANTHROPIC_API_KEY']
+
+def load_models(file_path):
+    with open(file_path, 'rb') as file:
+        config = tomllib.load(file)
+    models = config['models']
+    commands = {}
+    for name, entry in models.items():
+        commands[name] = name
+        for alias in entry.get('aliases', []):
+            commands[alias] = name
+    return config.get('default', next(iter(models))), models, commands
+
+
+api_keys = read_api_keys(BASE_DIR / 'keys.txt')
+DEFAULT_MODEL, MODELS, MODEL_COMMANDS = load_models(BASE_DIR / 'models.toml')
 
 # System prompt text
-with open('system_prompt.txt', 'r') as file:
+with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
     # system_prompt = file.read()
     system_prompt = ''
 
-# Function to query OpenAI
-def query_openai(text, image_base64=None):
-    url = 'https://api.openai.com/v1/chat/completions'
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": [{"type": "text", "text": text}]}
-    ]
-    
-    if image_base64:
-        messages[1]["content"].append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/png;base64,{image_base64}",
-                "detail": "high"
-            }
-        })
-    
-    data = {
-        'model': 'gpt-4-turbo',
-        'messages': messages,
-    }
-    
-    try:
-        response = post(url, json=data, headers=headers)
-        response.raise_for_status()
-        response_data = response.json()
-        
-        if 'choices' in response_data and len(response_data['choices']) > 0:
-            return response_data['choices'][0]['message']['content']
-        else:
-            return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
-    except Exception as e:
-        return f"Error in API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"
 
-# Function to query Gemini
-def query_gemini(input_text, image_base64=None):
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        generation_config = {
-            "temperature": 1,
-            "top_p": 0.95,
-            "top_k": 64,
-            "max_output_tokens": 8192,
-        }
-        model = genai.GenerativeModel(
-            model_name="gemini-1.0-pro-vision-latest",
-            generation_config=generation_config,
-        )
-        
-        prompt_parts = [system_prompt, input_text]
-        if image_base64:
-            image_parts = [
-                {
-                    "mime_type": "image/png",
-                    "data": image_base64
-                }
-            ]
-            prompt_parts.extend(image_parts)
-        
-        response = model.generate_content(prompt_parts)
-        return response.text
-    except Exception as e:
-        return f"Error in Gemini API call: {str(e)}"
+def get_key(provider):
+    key = api_keys.get(KEY_NAMES[provider], '')
+    if not key or key.startswith('your'):
+        raise ValueError(f"{KEY_NAMES[provider]} is missing from keys.txt")
+    return key
+
 
 # Function to query Claude
-def query_claude(text, image_base64=None):
-    try:
-        anthropic = Anthropic(api_key=ANTHROPIC_API_KEY)
-        
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": text}]}
-        ]
-        
-        if image_base64:
-            messages[0]["content"].insert(0, {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": image_base64
-                }
-            })
-        
-        response = anthropic.messages.create(
-            model="claude-3-5-sonnet-latest",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=messages
-        )
-        
-        return response.content[0].text
-    except Exception as e:
-        return f"Error in Claude API call: {str(e)}"
+def query_anthropic(model_id, text, image_base64=None):
+    client = Anthropic(api_key=get_key('anthropic'))
+
+    content = [{"type": "text", "text": text}]
+    if image_base64:
+        content.insert(0, {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": image_base64
+            }
+        })
+
+    response = client.beta.messages.create(
+        model=model_id,
+        max_tokens=16000,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+        # If a safety classifier declines, retry on a fallback model in the same call
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+    )
+
+    if response.stop_reason == "refusal":
+        return "Claude declined to answer this request."
+    return ''.join(block.text for block in response.content if block.type == "text")
 
 
+# Function to query OpenAI (Responses API)
+def query_openai(model_id, text, image_base64=None):
+    client = OpenAI(api_key=get_key('openai'))
 
-# Function to query Ollama's llama3 model
-def query_llama3(text, image_base64=None):
+    content = [{"type": "input_text", "text": text}]
+    if image_base64:
+        content.append({
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{image_base64}"
+        })
+
+    response = client.responses.create(
+        model=model_id,
+        instructions=system_prompt or None,
+        input=[{"role": "user", "content": content}],
+    )
+    return response.output_text
+
+
+# Function to query DeepSeek (OpenAI-compatible Chat Completions API)
+def query_deepseek(model_id, text, image_base64=None):
+    client = OpenAI(api_key=get_key('deepseek'), base_url="https://api.deepseek.com")
+
+    content = [{"type": "text", "text": text}]
+    if image_base64:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
+        })
+
+    messages = [{"role": "user", "content": content}]
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    response = client.chat.completions.create(model=model_id, messages=messages)
+    return response.choices[0].message.content
+
+
+# Function to query Gemini
+def query_gemini(model_id, text, image_base64=None):
+    client = genai.Client(api_key=get_key('gemini'))
+
+    contents = [text]
+    if image_base64:
+        contents.append(types.Part.from_bytes(
+            data=base64.b64decode(image_base64),
+            mime_type="image/png"
+        ))
+
+    response = client.models.generate_content(
+        model=model_id,
+        contents=contents,
+        config=types.GenerateContentConfig(system_instruction=system_prompt or None),
+    )
+    return response.text
+
+
+# Function to query a local Ollama model
+def query_ollama(model_id, text, image_base64=None):
     url = "http://localhost:11434/api/chat"
-    
+
     payload = {
-        "model": "llama3",
+        "model": model_id,
         "messages": [
             {
                 "role": "system",
@@ -144,95 +166,35 @@ def query_llama3(text, image_base64=None):
         ],
         "stream": False
     }
-    
+
     if image_base64:
         payload["messages"][1]["images"] = [image_base64]
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        return result['message']['content']
-    except requests.exceptions.RequestException as e:
-        return f"Error in Ollama API call: {str(e)}"
 
-# Add this function before the api_call function
+    response = requests.post(url, json=payload)
+    response.raise_for_status()
+    return response.json()['message']['content']
 
-def query_ollama(text, model_name, image_base64=None):
-    url = "http://localhost:11434/api/chat"
-    
-    payload = {
-        "model": model_name,
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": text
-            }
-        ],
-        "stream": False
-    }
-    
-    if image_base64:
-        payload["messages"][1]["images"] = [image_base64]
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        return result['message']['content']
-    except requests.exceptions.RequestException as e:
-        return f"Error in Ollama API call: {str(e)}"
 
-# main function 
+PROVIDERS = {
+    'anthropic': query_anthropic,
+    'openai': query_openai,
+    'deepseek': query_deepseek,
+    'gemini': query_gemini,
+    'ollama': query_ollama,
+}
+
+
+# main function
 def api_call(model, text, image_base64=None):
-    api_functions = {
-        'chatgpt': query_openai,
-        'gemini': query_gemini,
-        'claude': query_claude,
-        'llama3': query_llama3,
-        'o1': query_o1
-    }
-    
-    if model.startswith('ollama:'):
-        ollama_model = model.split(':', 1)[1]
-        return query_ollama(text, ollama_model, image_base64)
-    elif model in api_functions:
-        return api_functions[model](text, image_base64)
-    else:
+    if model not in MODELS:
         return f"Error: Unsupported model '{model}'"
 
-def query_o1(text, image_base64=None):
-    url = 'https://api.openai.com/v1/chat/completions'
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    messages = [
-        {"role": "user", "content": text}
-    ]
-    
-    if image_base64:
-        return "Warning: o1 model doesn't support image input yet."
-    
-    data = {
-        'model': 'o1-preview',
-        'messages': messages,
-        'max_completion_tokens': 32768
-    }
-    
+    entry = MODELS[model]
+    provider = entry['provider']
+    if provider not in PROVIDERS:
+        return f"Error: Unknown provider '{provider}' in models.toml"
+
     try:
-        response = requests.post(url, json=data, headers=headers)
-        response.raise_for_status()
-        response_data = response.json()
-        
-        if 'choices' in response_data and len(response_data['choices']) > 0:
-            return response_data['choices'][0]['message']['content']
-        else:
-            return f"Unexpected response format: {json.dumps(response_data, indent=2)}"
+        return PROVIDERS[provider](entry['model'], text, image_base64)
     except Exception as e:
-        return f"Error in o1 API call: {str(e)}\nResponse: {response.text if 'response' in locals() else 'No response'}"
+        return f"Error in {model} ({entry['model']}) API call: {e}"
