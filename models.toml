@@ -24,6 +24,14 @@ search_model = "deepseek-v4-pro"
 # Set this to true to also log your prompts and the answers.
 log_prompts = false
 
+# Folders the model may read with /files: list, search and read files (PDF and
+# text). Read-only, and nothing outside these folders is reachable.
+# Works with DeepSeek, or any model when OPENROUTER_API_KEY is set.
+[files]
+folders = ["~/Desktop/soci369"]
+# true: every /a and /see question can read these folders too, not just /files
+always = true
+
 [models.opus]
 provider = "anthropic"
 model = "claude-opus-5-5"

@@ -14,8 +14,9 @@ _request_numbers = itertools.count(1)
 
 # Order of fields in the "done" line; anything else reported is appended after
 FIELD_ORDER = [
-    'status', 'total', 'first_output', 'first_text', 'thinking', 'thinking_spans',
-    'searching', 'searches', 'answering', 'typing', 'answer_chars', 'answer_lines',
+    'status', 'files', 'total', 'first_output', 'first_text', 'thinking', 'thinking_spans',
+    'searching', 'searches', 'reading', 'tool_rounds', 'tool_calls', 'files_read', 'search_queries',
+    'answering', 'typing', 'answer_chars', 'answer_lines',
     'provider', 'model_id', 'route', 'served_model', 'upstream_provider', 'fallback',
     'stop', 'refusal_category', 'tokens_in', 'tokens_cache_read', 'tokens_cache_write',
     'tokens_out', 'tokens_thinking', 'cost_usd', 'response_id', 'request_id',
@@ -49,7 +50,7 @@ def describe_image(image_base64, source):
 class RequestTrace:
     """Times one request from send to the last typed character."""
 
-    def __init__(self, command, model, prompt, image=None, log_prompts=False):
+    def __init__(self, command, model, prompt, image=None, log_prompts=False, files=False):
         self.number = next(_request_numbers)
         self.log_prompts = log_prompts
         self.started = time.monotonic()
@@ -67,7 +68,8 @@ class RequestTrace:
         self.typing = 0.0
         self.answer_parts = []
 
-        fields = {'command': command, 'model': model, 'prompt_chars': len(prompt)}
+        self.files = files
+        fields = {'command': command, 'model': model, 'prompt_chars': len(prompt), 'files': files}
         if image:
             fields['image'] = image
         log.info('request #%d sent | %s', self.number, format_fields(fields))
@@ -101,6 +103,8 @@ class RequestTrace:
         elif kind == 'searching':
             self.searches += 1  # One event per web search
             self._switch('searching')
+        elif kind == 'reading':
+            self._switch('reading')
         elif kind == 'text':
             if self.first_text is None:
                 self.first_text = self.elapsed()
@@ -123,6 +127,7 @@ class RequestTrace:
             'thinking_spans': self.thinking_spans or None,
             'searching': self.durations.get('searching'),
             'searches': self.searches or None,
+            'reading': self.durations.get('reading'),
             'answering': self.durations.get('answering'),
             'typing': self.typing or None,
             'answer_chars': self.answer_chars,

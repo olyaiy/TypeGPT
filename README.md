@@ -38,6 +38,18 @@ model = "claude-haiku-5-5"
 
 It's then available as `/haiku`. Any model you've pulled in Ollama works the same way with `provider = "ollama"`.
 
+### File access
+
+Give the model read-only access to folders, such as your course notes, and it can list, search and read the files (PDFs and text files) to answer you, citing the file and page. Set the folders in `models.toml`:
+
+```toml
+[files]
+folders = ["~/Desktop/soci369"]
+always = true   # every /a and /see question can use the files; false = only /files
+```
+
+Then type `/files` (or just `/a` with `always = true`), your question, and `Cmd+Shift+Enter`. You'll see `(reading files)` while it looks. Nothing outside the listed folders is reachable, and it can't change or delete anything. File access works with DeepSeek models, or with any model when `OPENROUTER_API_KEY` is set (Claude, GPT and Gemini go through OpenRouter for this).
+
 ### Web search
 
 `/search` answers with live web results using DeepSeek's built-in web search (`deepseek-v4-pro`). Type `/search`, your question, then `Cmd+Shift+Enter`. It always uses DeepSeek, whichever model is selected, and needs `DEEPSEEK_API_KEY`. While it works you'll see `(thinking)` and `(searching)`. DeepSeek charges per search (about $0.75 per 1,000 searches) on top of tokens. Change the model with `search_model` in `models.toml`.
@@ -115,6 +127,7 @@ Use the following commands in any text field:
 - `/a`: Start a prompt
 - `/see`: Capture a screenshot and start a prompt about it
 - `/search`: Ask a question with web search (DeepSeek, needs `DEEPSEEK_API_KEY`)
+- `/files`: Ask a question the model can answer from your own files (see [File access](#file-access))
 - `/stop`: Stop listening
 - `/quit`: Quit the program
 - `/restart`: Restart the program

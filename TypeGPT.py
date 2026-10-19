@@ -4,8 +4,9 @@ from io import BytesIO
 from pynput import keyboard
 import pyperclip
 import api_calls
-from api_calls import (api_stream, search_stream, openrouter_model_exists, DEFAULT_MODEL, MODELS,
-                       MODEL_COMMANDS, SEARCH_MODEL, LOG_PROMPTS, THINKING, SEARCHING, TEXT)
+from api_calls import (api_stream, search_stream, files_stream, openrouter_model_exists, DEFAULT_MODEL,
+                       MODELS, MODEL_COMMANDS, SEARCH_MODEL, LOG_PROMPTS, FILE_LIBRARY, FILES_ALWAYS,
+                       THINKING, SEARCHING, READING, TEXT)
 from request_log import RequestTrace, describe_image
 import sys
 from PIL import Image, ImageGrab
@@ -80,7 +81,7 @@ MODIFIER_KEYS = (
 SHIFT_KEYS = {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}
 PASTE_CHARS = ('v', 'V', '\x16')  # '\x16' is what Ctrl+V reports on some platforms
 # Shown while the model works, erased when the answer starts
-STATUS_LABELS = {THINKING: '(thinking)', SEARCHING: '(searching)'}
+STATUS_LABELS = {THINKING: '(thinking)', SEARCHING: '(searching)', READING: '(reading files)'}
 SEND_KEYS = 'Cmd+Shift+Enter' if IS_MAC else 'Ctrl+Shift+Enter'
 # press() types these literally, so map them to the real keys
 CONTROL_KEYS = {'\n': keyboard.Key.enter, '\r': keyboard.Key.enter, '\t': keyboard.Key.tab}
@@ -111,6 +112,7 @@ class TypeGPT:
             '/a': lambda: self.set_mode('line'),
             '/see': self.capture_screenshot,
             '/search': lambda: self.set_mode('search'),
+            '/files': lambda: self.set_mode('files'),
             '/model': lambda: self.set_mode('model'),
             '/check': self.check_model,
             '/restart': self.restart,
@@ -260,6 +262,8 @@ class TypeGPT:
             self.type_output(" model: ")
         elif mode == 'search':
             self.type_output(" search: ")
+        elif mode == 'files':
+            self.type_output(" files: ")
 
     def select_model(self, model):
         log.info('model switched | %s -> %s (%s)', self.model, model, MODELS.get(model, {}).get('model', model))
@@ -290,12 +294,14 @@ class TypeGPT:
             f'/a  ask a question, then {SEND_KEYS} to send',
             f'/see  ask about a screenshot, then {SEND_KEYS} to send',
             f'/search  ask with web search ({SEARCH_MODEL}), then {SEND_KEYS} to send',
+            f'/files  ask about your files ({", ".join(FILE_LIBRARY.roots) or "none set up"}), then {SEND_KEYS}',
             f'/model  type any OpenRouter model ID, then {SEND_KEYS}',
             '/check  show the active model',
             '/stop  cancel input (or press Esc)',
             '/restart  restart TypeGPT',
             '/quit  quit TypeGPT',
             '/help  show this list',
+            f'File access on every question: {"on" if FILES_ALWAYS else "off"}',
             'Models:',
         ]
         for name, entry in MODELS.items():
@@ -313,12 +319,12 @@ class TypeGPT:
     def process_enter_key(self):
         if self.listening and self.mode == 'model':
             self.choose_model(self.captured_text.strip())
-        elif self.listening and self.mode in ['line', 'screenshot', 'search']:
+        elif self.listening and self.mode in ['line', 'screenshot', 'search', 'files']:
             if self.busy:
                 log.info('send ignored | still answering the previous request')
                 return
             text, screenshot_base64 = self.captured_text, self.screenshot_base64
-            command = {'line': '/a', 'screenshot': '/see', 'search': '/search'}[self.mode]
+            command = {'line': '/a', 'screenshot': '/see', 'search': '/search', 'files': '/files'}[self.mode]
             self.cancel_input()
             self.busy = True
             # Answer on a separate thread so the keyboard listener never blocks
@@ -344,10 +350,13 @@ class TypeGPT:
                 image = describe_image(image_base64, 'pasted')
 
             self.request_count += 1
+            use_files = command == '/files' or (FILES_ALWAYS and command in ('/a', '/see'))
             trace = RequestTrace(command, 'search' if search else model, prompt,
-                                 image if not search else None, LOG_PROMPTS)
+                                 image if not search else None, LOG_PROMPTS, files=use_files)
             if search:
                 events = search_stream(prompt)  # Search ignores pasted images
+            elif use_files:
+                events = files_stream(model, prompt, image_base64)
             else:
                 events = api_stream(model, prompt, image_base64)
 

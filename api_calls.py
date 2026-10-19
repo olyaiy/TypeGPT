@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 import logging
 import tomllib
 from pathlib import Path
@@ -9,6 +10,8 @@ from anthropic import Anthropic
 from google import genai
 from google.genai import types
 from openai import OpenAI
+
+from file_tools import TOOLS as FILE_TOOLS, FileLibrary, tools_instructions
 
 BASE_DIR = Path(__file__).resolve().parent
 log = logging.getLogger('typegpt')
@@ -58,6 +61,10 @@ CONFIG, DEFAULT_MODEL, MODELS, MODEL_COMMANDS = load_models(BASE_DIR / 'models.t
 PREFER_OPENROUTER = CONFIG.get('prefer_openrouter', False)
 SEARCH_MODEL = CONFIG.get('search_model', 'deepseek-v4-pro')
 LOG_PROMPTS = CONFIG.get('log_prompts', False)
+FILES_CONFIG = CONFIG.get('files', {})
+FILE_LIBRARY = FileLibrary(FILES_CONFIG.get('folders', []))
+FILES_ALWAYS = FILES_CONFIG.get('always', False) and bool(FILE_LIBRARY)
+MAX_TOOL_ROUNDS = FILES_CONFIG.get('max_tool_rounds', 12)
 
 # System prompt sent to every model
 try:
@@ -115,10 +122,12 @@ def resolve_model(model):
 # Each query_* function is a generator of (kind, value) events:
 #   (THINKING, None)  while the model is reasoning
 #   (SEARCHING, None) while it searches the web (/search only)
+#   (READING, None)   while it uses the file tools (/files)
 #   (TEXT, "...")     for each piece of the answer
 #   (INFO, {...})     details for the log: routing, token usage, IDs, stop reason
 THINKING = 'thinking'
 SEARCHING = 'searching'
+READING = 'reading'
 TEXT = 'text'
 INFO = 'info'
 
@@ -446,6 +455,164 @@ def search_stream(text):
         log.warning('Search error (%s): %s', SEARCH_MODEL, e, exc_info=True)
         yield details(error=f"{type(e).__name__}: {e}")
         yield TEXT, f"Error in /search ({SEARCH_MODEL}): {e}"
+
+
+# /files: the model can list, search and read files in the folders from
+# models.toml. Runs a tool-calling loop over the Chat Completions API, so it
+# works with DeepSeek and every OpenRouter model.
+def files_stream(model, text, image_base64=None):
+    if not FILE_LIBRARY:
+        yield details(error='no folders configured')
+        yield TEXT, "No folders are set up for file access. Add them under [files] in models.toml."
+        return
+    try:
+        provider, model_id = resolve_model(model)
+        entry = MODELS.get(model, {})
+        if provider not in ('deepseek', 'openrouter'):
+            # Anthropic, OpenAI and Gemini models read files through OpenRouter
+            if entry.get('openrouter') and has_key('openrouter'):
+                provider, model_id = 'openrouter', entry['openrouter']
+            else:
+                raise ValueError(f"File access needs a DeepSeek model or OPENROUTER_API_KEY (selected: {model})")
+    except ValueError as e:
+        yield details(error=str(e))
+        yield TEXT, f"Error: {e}"
+        return
+
+    yield details(provider=provider, model_id=model_id, route='direct' if provider == entry.get('provider') else
+                  ('openrouter' if not entry else 'openrouter fallback'))
+    try:
+        yield from run_file_tools(provider, model_id, text, image_base64)
+    except Exception as e:
+        log.warning('Files error from %s (%s): %s', provider, model_id, e, exc_info=True)
+        yield details(error=f"{type(e).__name__}: {e}")
+        yield TEXT, f"Error in {model} ({provider}: {model_id}) file request: {e}"
+
+
+def merge_reasoning_details(merged, new_items):
+    """Joins OpenRouter's streamed reasoning_details pieces back into whole items."""
+    for item in new_items or []:
+        item = dict(item) if not isinstance(item, dict) else item
+        key = (item.get('type'), item.get('index', 0))
+        current = merged.setdefault(key, {})
+        for field, value in item.items():
+            if field in ('text', 'summary', 'data') and isinstance(value, str):
+                current[field] = current.get(field, '') + value
+            elif value is not None:
+                current[field] = value
+
+
+def run_file_tools(provider, model_id, text, image_base64):
+    if provider == 'deepseek':
+        client, extra = OpenAI(api_key=get_key('deepseek'), base_url=DEEPSEEK_URL), {}
+    else:
+        client = OpenAI(api_key=get_key('openrouter'), base_url=OPENROUTER_URL)
+        extra = {"extra_headers": {"HTTP-Referer": "https://github.com/olyaiy/TypeGPT", "X-OpenRouter-Title": "TypeGPT"}}
+
+    content = [{"type": "text", "text": text}]
+    if image_base64:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}})
+    instructions = f"{system_prompt}\n\n{tools_instructions(FILE_LIBRARY)}".strip()
+    messages = [{"role": "system", "content": instructions}, {"role": "user", "content": content}]
+
+    totals = {'tokens_in': 0, 'tokens_out': 0, 'tokens_thinking': 0, 'tokens_cache_read': 0, 'cost_usd': 0.0}
+    tool_counts, files_read, queries, tool_rounds = {}, [], [], 0
+    answered, finish_reason, served_model, response_id, upstream = False, None, None, None, None
+
+    for round_number in range(1, MAX_TOOL_ROUNDS + 2):
+        last_round = round_number > MAX_TOOL_ROUNDS  # Out of tool rounds: must answer now
+        stream = client.chat.completions.create(
+            model=model_id, messages=messages, tools=FILE_TOOLS,
+            tool_choice="none" if last_round else "auto",
+            stream=True, stream_options={"include_usage": True}, **extra,
+        )
+        text_parts, reasoning_parts, reasoning_details, calls = [], [], {}, {}
+        for chunk in stream:
+            served_model, response_id = chunk.model or served_model, chunk.id or response_id
+            upstream = getattr(chunk, 'provider', None) or upstream
+            if chunk.usage:
+                usage = chunk.usage
+                totals['tokens_in'] += usage.prompt_tokens or 0
+                totals['tokens_out'] += usage.completion_tokens or 0
+                if usage.completion_tokens_details:
+                    totals['tokens_thinking'] += usage.completion_tokens_details.reasoning_tokens or 0
+                cached = (usage.prompt_tokens_details.cached_tokens if usage.prompt_tokens_details else None) \
+                    or getattr(usage, 'prompt_cache_hit_tokens', None)
+                totals['tokens_cache_read'] += cached or 0
+                totals['cost_usd'] += getattr(usage, 'cost', None) or 0
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            finish_reason = choice.finish_reason or finish_reason
+            delta = choice.delta
+            reasoning = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None)
+            details_items = getattr(delta, 'reasoning_details', None)
+            if reasoning or details_items:
+                yield THINKING, None
+                if getattr(delta, 'reasoning_content', None):
+                    reasoning_parts.append(delta.reasoning_content)
+                merge_reasoning_details(reasoning_details, details_items)
+            if delta.content:
+                answered = True
+                text_parts.append(delta.content)
+                yield TEXT, delta.content
+            for call in delta.tool_calls or []:
+                current = calls.setdefault(call.index, {'id': None, 'name': '', 'arguments': ''})
+                current['id'] = call.id or current['id']
+                if call.function and call.function.name:
+                    current['name'] += call.function.name
+                if call.function and call.function.arguments:
+                    current['arguments'] += call.function.arguments
+
+        if not calls:
+            break
+
+        # Send the model's turn back unchanged; DeepSeek returns 400 without reasoning_content
+        assistant = {
+            "role": "assistant",
+            "content": ''.join(text_parts) or None,
+            "tool_calls": [{"id": c['id'], "type": "function",
+                            "function": {"name": c['name'], "arguments": c['arguments'] or '{}'}}
+                           for c in calls.values()],
+        }
+        if reasoning_parts:
+            assistant["reasoning_content"] = ''.join(reasoning_parts)
+        if reasoning_details:
+            assistant["reasoning_details"] = list(reasoning_details.values())
+        messages.append(assistant)
+
+        yield READING, None
+        tool_rounds += 1
+        for c in calls.values():
+            result = FILE_LIBRARY.call(c['name'], c['arguments'])
+            tool_counts[c['name']] = tool_counts.get(c['name'], 0) + 1
+            try:
+                args = json.loads(c['arguments'] or '{}')
+            except json.JSONDecodeError:
+                args = {}
+            if c['name'] == 'read_file' and args.get('path'):
+                files_read.append(args['path'] + (f" p{args['start_page']}" if args.get('start_page', 1) != 1 else ''))
+            if c['name'] == 'search_files' and args.get('query'):
+                queries.append(args['query'])
+            log.info('files | tool %s %s -> %d chars%s', c['name'],
+                     json.dumps(args) if LOG_PROMPTS or c['name'] != 'search_files' else '(query hidden)',
+                     len(result), ' (error)' if result.startswith('Error') else '')
+            messages.append({"role": "tool", "tool_call_id": c['id'], "content": result})
+
+    yield details(
+        served_model=served_model,
+        upstream_provider=upstream,
+        stop=finish_reason,
+        tool_rounds=tool_rounds or None,
+        tool_calls=' '.join(f'{name}:{count}' for name, count in tool_counts.items()) or None,
+        files_read=files_read or None,
+        search_queries=queries if LOG_PROMPTS and queries else None,
+        response_id=response_id,
+        **{k: v for k, v in totals.items() if v},
+    )
+    if not answered:
+        yield details(error='finished without an answer')
+        yield TEXT, "No answer came back. Try asking again or more specifically."
 
 
 def api_call(model, text, image_base64=None):

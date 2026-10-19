@@ -11,6 +11,7 @@ dependencies = [
     "pillow>=13.0.0",
     "pyautogui>=0.9.54",
     "pynput>=1.8.2",
+    "pypdf>=6.21.1",
     "pyperclip>=1.11.0",
     "requests>=2.34.2",
 ]
