@@ -19,6 +19,7 @@ import pypdfium2
 from pypdf import PdfReader
 
 log = logging.getLogger('typegpt')
+logging.getLogger('pypdf').setLevel(logging.ERROR)  # Font warnings on some PDFs are harmless noise
 
 TEXT_EXTENSIONS = {
     '.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.toml', '.xml',
