@@ -82,12 +82,15 @@ FILE_LIBRARY = FileLibrary(FILES_CONFIG.get('folders', []), ocr_cache_dir=BASE_D
 FILES_ALWAYS = FILES_CONFIG.get('always', False) and bool(FILE_LIBRARY)
 MAX_TOOL_ROUNDS = FILES_CONFIG.get('max_tool_rounds', 12)
 
-# System prompt sent to every model
-try:
-    with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
-        system_prompt = file.read().strip()
-except FileNotFoundError:
-    system_prompt = ''
+# System prompt sent to every model: system_prompt.txt, plus your own
+# system_prompt.local.txt (not committed) if it exists
+system_prompt = ''
+for name in ('system_prompt.txt', 'system_prompt.local.txt'):
+    try:
+        with open(BASE_DIR / name, 'r') as file:
+            system_prompt = f"{system_prompt}\n\n{file.read().strip()}".strip()
+    except FileNotFoundError:
+        pass
 
 
 def has_key(provider):

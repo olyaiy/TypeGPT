@@ -12,4 +12,5 @@ nohup.out
 .env
 keys.txt
 models.local.toml
+system_prompt.local.txt
 .ocr_cache/
