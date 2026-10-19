@@ -8,10 +8,66 @@ from api_calls import (api_stream, search_stream, openrouter_model_exists, DEFAU
 import sys
 from PIL import Image, ImageGrab
 import io
+import logging
+import logging.handlers
 import platform
 import threading
+import time
+from pathlib import Path
 
 IS_MAC = platform.system() == 'Darwin'
+
+# Exit codes run.sh and the GUI understand
+EXIT_RESTART = 42          # /restart: relaunch right away
+EXIT_NO_PERMISSIONS = 3    # don't relaunch
+EXIT_TOO_MANY_CRASHES = 2  # don't relaunch
+
+LOG_FILE = Path(__file__).resolve().parent / 'typegpt.log'
+log = logging.getLogger('typegpt')
+
+
+def setup_logging():
+    log.setLevel(logging.INFO)
+    file_handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=1)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+    log.addHandler(file_handler)
+    log.addHandler(logging.StreamHandler())
+    # Anything uncaught, on any thread, ends up in the log
+    sys.excepthook = lambda *exc: log.critical('Uncaught exception', exc_info=exc)
+    threading.excepthook = lambda args: log.error(
+        'Uncaught exception in thread', exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+
+class SafeListener(keyboard.Listener):
+    """A keyboard listener that skips key events it can't read instead of stopping.
+
+    On macOS pynput only catches IndexError while reading the character for a key
+    event, so an undecodable one (e.g. half of an emoji) raised UnicodeDecodeError
+    and stopped the whole listener.
+    """
+
+    def _event_to_key(self, event):
+        try:
+            return super()._event_to_key(event)
+        except IndexError:
+            raise  # pynput already handles this
+        except Exception:
+            log.warning('Skipped a key event that could not be read', exc_info=True)
+            return None
+
+
+def guarded(default=None):
+    """Logs any error in a listener callback instead of letting it stop the listener."""
+    def decorator(f):
+        def wrapper(self, *args, **kwargs):
+            try:
+                return f(self, *args, **kwargs)
+            except Exception:
+                log.exception('Error handling a key event')
+                self.cancel_input()
+                return default
+        return wrapper
+    return decorator
 
 # Cmd on macOS, Ctrl on Windows/Linux
 MODIFIER_KEYS = (
@@ -57,6 +113,7 @@ class TypeGPT:
         for command, model in MODEL_COMMANDS.items():
             self.commands[f'/{command}'] = lambda model=model: self.select_model(model)
 
+    @guarded()
     def on_press(self, key, injected=False):
         # Ignore the keystrokes TypeGPT types itself
         if injected:
@@ -70,6 +127,7 @@ class TypeGPT:
         elif isinstance(key, keyboard.KeyCode) and key.char is not None:
             self.process_character(key.char)
 
+    @guarded(default=True)
     def on_release(self, key, injected=False):
         if injected:
             return True
@@ -248,6 +306,7 @@ class TypeGPT:
             ).start()
 
     def process_text(self, text, model, screenshot_base64=None, search=False):
+        label = None  # The status label currently on screen
         try:
             self.type_output(' ...\n')
             prompt = text.strip()
@@ -263,7 +322,6 @@ class TypeGPT:
             else:
                 events = api_stream(model, prompt, image_base64)
 
-            label = None  # The status label currently on screen
             answer_started = False
             for kind, value in events:
                 if kind in STATUS_LABELS:
@@ -280,6 +338,15 @@ class TypeGPT:
                     self.type_output(value)
             if label:
                 self.erase(len(label))
+                label = None
+        except Exception:
+            log.exception('Error while answering')
+            try:
+                if label:
+                    self.erase(len(label))
+                self.type_output(f' (TypeGPT error, details in {LOG_FILE.name})')
+            except Exception:
+                log.exception('Could not type the error message')
         finally:
             self.busy = False
 
@@ -299,8 +366,11 @@ class TypeGPT:
             # Normal text output
             for char in text:
                 key = CONTROL_KEYS.get(char, char)
-                self.keyboard_controller.press(key)
-                self.keyboard_controller.release(key)
+                try:
+                    self.keyboard_controller.press(key)
+                    self.keyboard_controller.release(key)
+                except Exception:
+                    log.warning('Could not type %r, skipped it', char)
 
     def restart(self):
         self.type_output(' ...restarting.')
@@ -308,13 +378,31 @@ class TypeGPT:
         self.should_quit = True
 
     def run(self):
-        with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
-            listener.join()
+        log.info('TypeGPT started (model: %s)', self.model)
+        crash_times = []
+        while not self.should_quit:
+            try:
+                with SafeListener(on_press=self.on_press, on_release=self.on_release) as listener:
+                    listener.join()
+            except Exception:
+                log.exception('Keyboard listener stopped unexpectedly')
+            if self.should_quit:
+                break
+
+            # The listener died; start a new one unless it keeps dying
+            now = time.time()
+            crash_times = [t for t in crash_times if now - t < 60] + [now]
+            if len(crash_times) > 5:
+                log.error('Keyboard listener failed %d times in a minute, giving up', len(crash_times))
+                sys.exit(EXIT_TOO_MANY_CRASHES)
+            self.cancel_input()
+            self.special_keys = {'modifier': False, 'shift': False}
+            log.info('Restarting keyboard listener')
+            time.sleep(1)
 
         if self.should_restart:
-            sys.exit(42)  # Special exit code for restart
-        elif self.should_quit:
-            sys.exit(0)   # Normal exit
+            sys.exit(EXIT_RESTART)
+        sys.exit(0)
 
 
 def check_permissions():
@@ -332,10 +420,11 @@ def check_permissions():
         print("3. Add and enable the app you run TypeGPT from (e.g. Terminal)")
         print("4. Also enable it under Privacy & Security > Input Monitoring")
         print("\nAfter granting permissions, please restart the application.")
-        sys.exit(1)
+        sys.exit(EXIT_NO_PERMISSIONS)
 
 
 if __name__ == "__main__":
+    setup_logging()
     check_permissions()
     typegpt = TypeGPT()
     typegpt.run()

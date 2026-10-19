@@ -4,11 +4,15 @@ import subprocess
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 KEYS_FILE = BASE_DIR / 'keys.txt'
 RESTART_EXIT_CODE = 42
+# Exits that mean "stay stopped": quit, too many crashes, missing permissions
+STOP_EXIT_CODES = {0, 2, 3}
+MAX_CRASH_RESTARTS = 5  # within a minute
 
 class TypeGPTGUI:
     def __init__(self, master):
@@ -38,6 +42,7 @@ class TypeGPTGUI:
         self.setup_keys_frame()
 
         self.process = None
+        self.crash_times = []
 
     def setup_keys_frame(self):
         self.keys_frame.grid_columnconfigure(1, weight=1)
@@ -133,19 +138,34 @@ class TypeGPTGUI:
         self.process = subprocess.Popen([sys.executable, str(BASE_DIR / 'TypeGPT.py')], cwd=BASE_DIR)
         self.status_label.config(text="Status: Running")
 
+    def _stopped(self, text):
+        self.process = None
+        self.status_label.config(text=text)
+        self.start_button.config(state="normal")
+        self.stop_button.config(state="disabled")
+
     def _check_process_status(self):
         if self.process:
             exit_code = self.process.poll()
-            if exit_code == RESTART_EXIT_CODE:
+            if exit_code is None:
+                self.master.after(1000, self._check_process_status)
+            elif exit_code == RESTART_EXIT_CODE:
                 self._launch()
                 self.master.after(1000, self._check_process_status)
-            elif exit_code is not None:
-                self.process = None
-                self.status_label.config(text="Status: Not Running")
-                self.start_button.config(state="normal")
-                self.stop_button.config(state="disabled")
+            elif exit_code == 3:
+                self._stopped("Status: Needs Accessibility permission")
+            elif exit_code in STOP_EXIT_CODES:
+                self._stopped("Status: Not Running")
             else:
-                self.master.after(1000, self._check_process_status)
+                # Crashed: relaunch, unless it keeps crashing
+                now = time.time()
+                self.crash_times = [t for t in self.crash_times if now - t < 60] + [now]
+                if len(self.crash_times) > MAX_CRASH_RESTARTS:
+                    self._stopped("Status: Keeps crashing, see typegpt.log")
+                else:
+                    self._launch()
+                    self.status_label.config(text="Status: Running (restarted after a crash)")
+                    self.master.after(1000, self._check_process_status)
 
     def stop_program(self):
         if self.process:

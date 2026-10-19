@@ -137,7 +137,7 @@ Use the following commands in any text field:
 ## Configuration Files
 1. `keys.txt`: API keys (see above)
 2. `models.toml`: Available models, commands, and the default model
-3. `system_prompt.txt`: Custom system prompt (not sent to models yet)
+3. `system_prompt.txt`: System prompt sent to every model. By default it asks for plain text only (no Markdown), since replies are typed into ordinary text fields
 
 ## Contributing
 

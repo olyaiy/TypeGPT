@@ -55,9 +55,11 @@ def load_models(file_path):
 api_keys = read_api_keys(BASE_DIR / 'keys.txt')
 DEFAULT_MODEL, MODELS, MODEL_COMMANDS, PREFER_OPENROUTER, SEARCH_MODEL = load_models(BASE_DIR / 'models.toml')
 
-# System prompt text
-with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
-    # system_prompt = file.read()
+# System prompt sent to every model
+try:
+    with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
+        system_prompt = file.read().strip()
+except FileNotFoundError:
     system_prompt = ''
 
 
@@ -133,7 +135,7 @@ def query_anthropic(model_id, text, image_base64=None):
     with client.beta.messages.stream(
         model=model_id,
         max_tokens=64000,
-        system=system_prompt,
+        **({"system": system_prompt} if system_prompt else {}),
         messages=[{"role": "user", "content": content}],
         # If a safety classifier declines, retry on a fallback model in the same call
         betas=["server-side-fallback-2026-07-01"],
@@ -315,7 +317,7 @@ def search_stream(text):
             tools=[{"type": "web_search"}],
             # The model doesn't know today's date, and searches for the wrong year without it
             instructions=f"Today's date is {datetime.date.today():%B %d, %Y}. "
-                         "Search the web to answer with current information.",
+                         f"Search the web to answer with current information.\n\n{system_prompt}".strip(),
             input=text,
             stream=True,
         )

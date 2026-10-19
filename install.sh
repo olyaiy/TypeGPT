@@ -41,8 +41,12 @@ fi
 
 chmod +x run.sh
 
+# `typegpt` command (uv's installer already puts ~/.local/bin on your PATH)
+mkdir -p "$HOME/.local/bin"
+ln -sf "$(pwd)/run.sh" "$HOME/.local/bin/typegpt"
+
 echo "Installation completed successfully!"
 echo "Please follow these steps to complete setup:"
 echo "1. Add your API keys to keys.txt (or in the GUI's API Keys tab)"
 echo "2. macOS: allow your terminal in System Settings > Privacy & Security > Accessibility and Input Monitoring"
-echo "3. Start the program using: ./run.sh   (or ./run.sh --no-gui)"
+echo "3. Start the program using: typegpt   (or typegpt --no-gui)"
