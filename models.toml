@@ -27,10 +27,14 @@ log_prompts = false
 # Folders the model may read with /files: list, search and read files (PDF and
 # text). Read-only, and nothing outside these folders is reachable.
 # Works with DeepSeek, or any model when OPENROUTER_API_KEY is set.
+# Put your own folders in models.local.toml (not committed), e.g.:
+#   [files]
+#   folders = ["~/Desktop/my-course"]
+#   always = true
 [files]
-folders = ["~/Desktop/soci369"]
+folders = []
 # true: every /a and /see question can read these folders too, not just /files
-always = true
+always = false
 
 [models.opus]
 provider = "anthropic"

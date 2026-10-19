@@ -11,3 +11,4 @@ __pycache__/
 nohup.out
 .env
 keys.txt
+models.local.toml

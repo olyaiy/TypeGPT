@@ -43,9 +43,23 @@ def read_api_keys(file_path):
     return keys
 
 
+def merge_config(base, override):
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            merge_config(base[key], value)
+        else:
+            base[key] = value
+
+
 def load_models(file_path):
     with open(file_path, 'rb') as file:
         config = tomllib.load(file)
+    # Personal settings (your folders, default model, ...) go in models.local.toml,
+    # which git ignores; anything set there overrides models.toml
+    local_path = file_path.with_name('models.local.toml')
+    if local_path.exists():
+        with open(local_path, 'rb') as file:
+            merge_config(config, tomllib.load(file))
     models = config['models']
     commands = {}
     for name, entry in models.items():

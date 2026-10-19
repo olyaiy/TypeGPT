@@ -40,11 +40,11 @@ It's then available as `/haiku`. Any model you've pulled in Ollama works the sam
 
 ### File access
 
-Give the model read-only access to folders, such as your course notes, and it can list, search and read the files (PDFs and text files) to answer you, citing the file and page. Set the folders in `models.toml`:
+Give the model read-only access to folders, such as your course notes, and it can list, search and read the files (PDFs and text files) to answer you, citing the file and page. Set the folders in `models.local.toml` (your personal settings file, ignored by git; anything in it overrides `models.toml`):
 
 ```toml
 [files]
-folders = ["~/Desktop/soci369"]
+folders = ["~/Documents/course-notes"]
 always = true   # every /a and /see question can use the files; false = only /files
 ```
 
@@ -149,7 +149,7 @@ Use the following commands in any text field:
 
 ## Configuration Files
 1. `keys.txt`: API keys (see above)
-2. `models.toml`: Available models, commands, and the default model
+2. `models.toml`: Available models, commands, and settings. Put personal overrides (your folders, a different default model) in `models.local.toml`, which git ignores
 3. `system_prompt.txt`: System prompt sent to every model. By default it asks for plain text only (no Markdown), since replies are typed into ordinary text fields
 4. `typegpt.log`: Log of every request (model, routing, timing, thinking and search time, token usage, request IDs, errors), commands, and crashes. Prompts and answers are only logged if you set `log_prompts = true` in `models.toml`. Keystrokes are never logged
 
