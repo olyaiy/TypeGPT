@@ -1,6 +1,6 @@
 # TypeGPT
 
-Oct 2026 update: TypeGPT now supports Claude Opus 5.5, Claude Sonnet 5.5, GPT-6.1 Sol, DeepSeek Flash and Gemini 4 Argon. Models are configured in `models.toml`, installation uses [uv](https://docs.astral.sh/uv/), and input handling got a round of fixes (spaces, backspace, `/` in prompts, Esc, Ctrl on Windows/Linux, and `/see` screenshots).
+Oct 2026 update: TypeGPT now supports Claude Opus 5.5, Claude Sonnet 5.5, GPT-6.1 Sol, DeepSeek Flash and Gemini 4 Argon, plus every model on [OpenRouter](https://openrouter.ai/models) with a single key. Models are configured in `models.toml`, installation uses [uv](https://docs.astral.sh/uv/), and input handling got a round of fixes (spaces, backspace, `/` in prompts, Esc, Ctrl on Windows/Linux, and `/see` screenshots).
 
 TypeGPT is a Python application that allows you to invoke various AI's and LLM's from any text field in your operating system. Whether you're in a chat app, document, or code editor, you can seamlessly interact with Claude, ChatGPT, DeepSeek, Google Gemini, or local models with Ollama, using keyboard shortcuts.
 
@@ -11,7 +11,7 @@ https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0
 ## Features
 
 - **Global Accessibility**: Invoke AI models from any text input field across your system.
-- **Multiple AI Models**: Claude, GPT, DeepSeek, Gemini, and local models through Ollama.
+- **Multiple AI Models**: Claude, GPT, DeepSeek, Gemini, any model on OpenRouter, and local models through Ollama.
 - **Configurable Models**: Add or change models in `models.toml` without touching code.
 - **GUI Manager**: Easy-to-use interface for managing API keys and program status.
 - **Keyboard Shortcuts**: Use simple keyboard shortcuts to communicate with AI models.
@@ -39,6 +39,14 @@ model = "claude-haiku-5-5"
 
 It's then available as `/haiku`. Any model you've pulled in Ollama works the same way with `provider = "ollama"`.
 
+### OpenRouter
+
+With an `OPENROUTER_API_KEY`, one key covers every model:
+
+- **The commands above:** each model has an `openrouter` ID in `models.toml`. If you don't have that provider's own key, TypeGPT sends it through OpenRouter instead. Set `prefer_openrouter = true` to always use OpenRouter.
+- **Any other model:** type `/model`, then an OpenRouter model ID such as `meta-llama/llama-4-maverick` or `anthropic/claude-haiku-5.5`, then `Cmd+Shift+Enter`. Browse IDs at https://openrouter.ai/models.
+- To give an OpenRouter model its own command, add it to `models.toml` with `provider = "openrouter"`.
+
 ## Installation
 
 Requires macOS, Windows or Linux. [uv](https://docs.astral.sh/uv/) installs Python 3.12 and all dependencies for you.
@@ -53,9 +61,10 @@ cd TypeGPT
 
 ### API keys
 
-Add the keys for the providers you use to `keys.txt` (or in the GUI's API Keys tab). You only need keys for the models you use:
+Add the keys for the providers you use to `keys.txt` (or in the GUI's API Keys tab). You only need keys for the models you use, and an OpenRouter key alone works for all of them:
 
 ```txt
+OPENROUTER_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
 DEEPSEEK_API_KEY=your_key_here
@@ -63,6 +72,7 @@ GEMINI_API_KEY=your_key_here
 ```
 
 Get them at:
+- OpenRouter: https://openrouter.ai/keys
 - Claude: https://platform.claude.com/
 - OpenAI: https://platform.openai.com/
 - DeepSeek: https://platform.deepseek.com/
@@ -105,6 +115,7 @@ Use the following commands in any text field:
 - `/restart`: Restart the program
 - `/check`: Check which model is currently active
 - `/<model>`: Switch models (see [Models](#models))
+- `/model`: Type any OpenRouter model ID, then `Cmd+Shift+Enter` to switch to it
 
 ### Sending Queries
 1. Type `/a` (or `/see` to include a screenshot)

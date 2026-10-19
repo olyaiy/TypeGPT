@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import api_call, DEFAULT_MODEL, MODEL_COMMANDS
+from api_calls import api_call, openrouter_model_exists, DEFAULT_MODEL, MODEL_COMMANDS
 import sys
 from PIL import Image, ImageGrab
 import io
@@ -41,6 +41,7 @@ class TypeGPT:
             '/stop': self.stop_listening,
             '/a': lambda: self.set_mode('line'),
             '/see': self.capture_screenshot,
+            '/model': lambda: self.set_mode('model'),
             '/check': self.check_model,
             '/restart': self.restart,
         }
@@ -165,11 +166,24 @@ class TypeGPT:
         self.mode = mode
         if mode == 'line':
             self.type_output(": ")
+        elif mode == 'model':
+            self.type_output(" model: ")
 
     def select_model(self, model):
         self.model = model
         self.listening = False
         self.type_output(f' ... {model.capitalize()} selected.')
+
+    def choose_model(self, name):
+        self.listening = False
+        self.mode = None
+        if name in MODEL_COMMANDS:
+            self.select_model(MODEL_COMMANDS[name])
+        elif openrouter_model_exists(name):
+            self.model = name
+            self.type_output(f' ... {name} selected (OpenRouter).')
+        else:
+            self.type_output(f' ... unknown model: {name}')
 
     def check_model(self):
         self.type_output(f" -> {self.model} selected.")
@@ -177,7 +191,9 @@ class TypeGPT:
         self.mode = None
 
     def process_enter_key(self):
-        if self.listening and self.mode in ['line', 'screenshot']:
+        if self.listening and self.mode == 'model':
+            self.choose_model(self.captured_text.strip())
+        elif self.listening and self.mode in ['line', 'screenshot']:
             self.process_text(self.captured_text)
             self.listening = False
 

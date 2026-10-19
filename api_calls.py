@@ -15,7 +15,10 @@ KEY_NAMES = {
     'openai': 'OPENAI_API_KEY',
     'deepseek': 'DEEPSEEK_API_KEY',
     'gemini': 'GEMINI_API_KEY',
+    'openrouter': 'OPENROUTER_API_KEY',
 }
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
 
 
 def read_api_keys(file_path):
@@ -42,11 +45,12 @@ def load_models(file_path):
         commands[name] = name
         for alias in entry.get('aliases', []):
             commands[alias] = name
-    return config.get('default', next(iter(models))), models, commands
+    default = config.get('default', next(iter(models)))
+    return default, models, commands, config.get('prefer_openrouter', False)
 
 
 api_keys = read_api_keys(BASE_DIR / 'keys.txt')
-DEFAULT_MODEL, MODELS, MODEL_COMMANDS = load_models(BASE_DIR / 'models.toml')
+DEFAULT_MODEL, MODELS, MODEL_COMMANDS, PREFER_OPENROUTER = load_models(BASE_DIR / 'models.toml')
 
 # System prompt text
 with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
@@ -54,11 +58,49 @@ with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
     system_prompt = ''
 
 
-def get_key(provider):
+def has_key(provider):
     key = api_keys.get(KEY_NAMES[provider], '')
-    if not key or key.startswith('your'):
+    return bool(key) and not key.startswith('your')
+
+
+def get_key(provider):
+    if not has_key(provider):
         raise ValueError(f"{KEY_NAMES[provider]} is missing from keys.txt")
-    return key
+    return api_keys[KEY_NAMES[provider]]
+
+
+_openrouter_models = None
+
+
+def openrouter_model_exists(model_id):
+    """Checks OpenRouter's public model list. Returns True if the list can't be fetched."""
+    global _openrouter_models
+    if _openrouter_models is None:
+        try:
+            response = requests.get(f"{OPENROUTER_URL}/models", timeout=10)
+            response.raise_for_status()
+            _openrouter_models = {m['id'] for m in response.json()['data']}
+        except Exception:
+            return True
+    return model_id in _openrouter_models
+
+
+def resolve_model(model):
+    """Returns (provider, model_id) for a models.toml name or an OpenRouter model ID."""
+    if model not in MODELS:
+        return 'openrouter', model
+
+    entry = MODELS[model]
+    provider = entry['provider']
+    openrouter_id = entry.get('openrouter')
+    if provider == 'ollama' or provider == 'openrouter' or not openrouter_id:
+        return provider, entry['model']
+
+    if has_key('openrouter') and (PREFER_OPENROUTER or not has_key(provider)):
+        return 'openrouter', openrouter_id
+    if not has_key(provider):
+        raise ValueError(f"Add {KEY_NAMES[provider]} or OPENROUTER_API_KEY to keys.txt")
+    return provider, entry['model']
 
 
 # Function to query Claude
@@ -129,6 +171,32 @@ def query_deepseek(model_id, text, image_base64=None):
     return response.choices[0].message.content
 
 
+# Function to query any model on OpenRouter (OpenAI-compatible Chat Completions API)
+def query_openrouter(model_id, text, image_base64=None):
+    client = OpenAI(api_key=get_key('openrouter'), base_url=OPENROUTER_URL)
+
+    content = [{"type": "text", "text": text}]
+    if image_base64:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
+        })
+
+    messages = [{"role": "user", "content": content}]
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=messages,
+        extra_headers={
+            "HTTP-Referer": "https://github.com/olyaiy/TypeGPT",
+            "X-OpenRouter-Title": "TypeGPT",
+        },
+    )
+    return response.choices[0].message.content
+
+
 # Function to query Gemini
 def query_gemini(model_id, text, image_base64=None):
     client = genai.Client(api_key=get_key('gemini'))
@@ -180,21 +248,22 @@ PROVIDERS = {
     'openai': query_openai,
     'deepseek': query_deepseek,
     'gemini': query_gemini,
+    'openrouter': query_openrouter,
     'ollama': query_ollama,
 }
 
 
 # main function
 def api_call(model, text, image_base64=None):
-    if model not in MODELS:
-        return f"Error: Unsupported model '{model}'"
+    try:
+        provider, model_id = resolve_model(model)
+    except ValueError as e:
+        return f"Error: {e}"
 
-    entry = MODELS[model]
-    provider = entry['provider']
     if provider not in PROVIDERS:
         return f"Error: Unknown provider '{provider}' in models.toml"
 
     try:
-        return PROVIDERS[provider](entry['model'], text, image_base64)
+        return PROVIDERS[provider](model_id, text, image_base64)
     except Exception as e:
-        return f"Error in {model} ({entry['model']}) API call: {e}"
+        return f"Error in {model} ({provider}: {model_id}) API call: {e}"

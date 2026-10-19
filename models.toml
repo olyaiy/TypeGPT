@@ -1,34 +1,48 @@
 # Models TypeGPT can use. Each [models.<name>] entry becomes a /<name> command.
 #
-#   provider = anthropic | openai | deepseek | gemini | ollama
-#   model    = the provider's model ID
-#   aliases  = extra commands that select the same model (optional)
+#   provider   = anthropic | openai | deepseek | gemini | openrouter | ollama
+#   model      = the provider's model ID
+#   openrouter = the same model's OpenRouter ID (optional). Used when the
+#                provider's own key isn't in keys.txt but OPENROUTER_API_KEY is.
+#   aliases    = extra commands that select the same model (optional)
 #
 # To try a new model, add an entry here; no code changes needed.
+# Any OpenRouter model also works without an entry: type /model, the model ID
+# (e.g. meta-llama/llama-4-maverick), then Cmd/Ctrl+Shift+Enter.
+# Full list: https://openrouter.ai/models
 
 default = "opus"
+
+# Send every model with an `openrouter` ID through OpenRouter, even when the
+# provider's own key is set
+prefer_openrouter = false
 
 [models.opus]
 provider = "anthropic"
 model = "claude-opus-5-5"
+openrouter = "anthropic/claude-opus-5.5"
 aliases = ["claude"]
 
 [models.sonnet]
 provider = "anthropic"
 model = "claude-sonnet-5-5"
+openrouter = "anthropic/claude-sonnet-5.5"
 
 [models.gpt]
 provider = "openai"
 model = "gpt-6.1-sol"
+openrouter = "openai/gpt-6.1-sol"
 aliases = ["chatgpt"]
 
 [models.deepseek]
 provider = "deepseek"
 model = "deepseek-flash"
+openrouter = "~deepseek/deepseek-flash-latest"
 
 [models.gemini]
 provider = "gemini"
 model = "gemini-4-argon"
+openrouter = "google/gemini-4-argon"
 
 [models.llama3]
 provider = "ollama"

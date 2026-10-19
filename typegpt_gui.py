@@ -14,7 +14,7 @@ class TypeGPTGUI:
     def __init__(self, master):
         self.master = master
         master.title("TypeGPT Manager")
-        master.geometry("500x400")
+        master.geometry("520x460")
         
         master.configure(padx=20, pady=20)
         master.grid_columnconfigure(0, weight=1)
@@ -43,7 +43,7 @@ class TypeGPTGUI:
         self.keys_frame.grid_columnconfigure(1, weight=1)
         
         self.key_entries = {}
-        keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"]
+        keys = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"]
 
         for i, key in enumerate(keys):
             label = ttk.Label(self.keys_frame, text=f"{key}:", font=('Arial', 10))
