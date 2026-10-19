@@ -1,0 +1,76 @@
+# Models TypeGPT can use. Each [models.<name>] entry becomes a /<name> command.
+#
+#   provider   = anthropic | openai | deepseek | gemini | openrouter | ollama
+#   model      = the provider's model ID
+#   openrouter = the same model's OpenRouter ID (optional). Used when the
+#                provider's own key isn't in keys.txt but OPENROUTER_API_KEY is.
+#   aliases    = extra commands that select the same model (optional)
+#
+# To try a new model, add an entry here; no code changes needed.
+# Any OpenRouter model also works without an entry: type /model, the model ID
+# (e.g. meta-llama/llama-4-maverick), then Cmd/Ctrl+Shift+Enter.
+# Full list: https://openrouter.ai/models
+
+default = "opus"
+
+# Send every model with an `openrouter` ID through OpenRouter, even when the
+# provider's own key is set
+prefer_openrouter = false
+
+# Model used by /search (DeepSeek's built-in web search needs DEEPSEEK_API_KEY)
+search_model = "deepseek-v4-pro"
+
+# typegpt.log records every request (model, timings, tokens, IDs, errors).
+# Set this to true to also log your prompts and the answers.
+log_prompts = false
+
+# Folders the model may read with /files: list, search and read files (PDF and
+# text). Read-only, and nothing outside these folders is reachable.
+# Works with DeepSeek, or any model when OPENROUTER_API_KEY is set.
+# Put your own folders in models.local.toml (not committed), e.g.:
+#   [files]
+#   folders = ["~/Desktop/my-course"]
+#   always = true
+[files]
+folders = []
+# true: every /a and /see question can read these folders too, not just /files
+always = false
+# PDF pages that are mostly images (slides) are read by this model (OCR) so
+# their text and diagrams are searchable. A models.toml name; false turns it off.
+# Results are cached in .ocr_cache, so each page is read once.
+ocr_model = "deepseek"
+
+[models.opus]
+provider = "anthropic"
+model = "claude-opus-5-5"
+openrouter = "anthropic/claude-opus-5.5"
+aliases = ["claude"]
+
+[models.sonnet]
+provider = "anthropic"
+model = "claude-sonnet-5-5"
+openrouter = "anthropic/claude-sonnet-5.5"
+
+[models.gpt]
+provider = "openai"
+model = "gpt-6.1-sol"
+openrouter = "openai/gpt-6.1-sol"
+aliases = ["chatgpt"]
+
+[models.deepseek]
+provider = "deepseek"
+model = "deepseek-flash"
+openrouter = "~deepseek/deepseek-flash-latest"
+aliases = ["flash", "dsflash"]
+
+# Commands run as soon as they're typed, so a name can't start with another
+# command's name (/deepseekpro would never get past /deepseek)
+[models.dspro]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+openrouter = "deepseek/deepseek-v4-pro"
+
+[models.gemini]
+provider = "gemini"
+model = "gemini-4-argon"
+openrouter = "google/gemini-4-argon"

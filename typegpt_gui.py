@@ -2,13 +2,25 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
 import os
+import logging
 import signal
+import sys
+import time
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+KEYS_FILE = BASE_DIR / 'keys.txt'
+log = logging.getLogger('typegpt.gui')
+RESTART_EXIT_CODE = 42
+# Exits that mean "stay stopped": quit, too many crashes, missing permissions
+STOP_EXIT_CODES = {0, 2, 3}
+MAX_CRASH_RESTARTS = 5  # within a minute
 
 class TypeGPTGUI:
     def __init__(self, master):
         self.master = master
         master.title("TypeGPT Manager")
-        master.geometry("500x400")
+        master.geometry("520x460")
         
         master.configure(padx=20, pady=20)
         master.grid_columnconfigure(0, weight=1)
@@ -32,18 +44,19 @@ class TypeGPTGUI:
         self.setup_keys_frame()
 
         self.process = None
+        self.crash_times = []
 
     def setup_keys_frame(self):
         self.keys_frame.grid_columnconfigure(1, weight=1)
         
         self.key_entries = {}
-        keys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"]
+        keys = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY"]
 
         for i, key in enumerate(keys):
             label = ttk.Label(self.keys_frame, text=f"{key}:", font=('Arial', 10))
             label.grid(row=i, column=0, padx=10, pady=10, sticky="e")
 
-            entry = ttk.Entry(self.keys_frame, width=40)
+            entry = ttk.Entry(self.keys_frame, width=40, show="*")
             entry.grid(row=i, column=1, padx=10, pady=10, sticky="ew")
             self.key_entries[key] = entry
 
@@ -89,19 +102,23 @@ class TypeGPTGUI:
 
     def load_keys(self):
         try:
-            with open('keys.txt', 'r') as file:
+            with open(KEYS_FILE, 'r') as file:
                 for line in file:
-                    key, value = line.strip().split('=')
+                    if '=' not in line:
+                        continue
+                    key, value = line.strip().split('=', 1)
                     if key in self.key_entries:
                         self.key_entries[key].delete(0, tk.END)
                         self.key_entries[key].insert(0, value)
         except FileNotFoundError:
-            messagebox.showwarning("Warning", "keys.txt not found. Creating a new file.")
+            messagebox.showwarning("Warning", "keys.txt not found. Enter your keys and click Save Keys.")
 
     def save_keys(self):
-        with open('keys.txt', 'w') as file:
+        with open(KEYS_FILE, 'w') as file:
             for key, entry in self.key_entries.items():
                 file.write(f"{key}={entry.get()}\n")
+        saved = [key for key, entry in self.key_entries.items() if entry.get().strip()]
+        log.info('[gui] keys saved | set=%s', ','.join(saved) or 'none')
         messagebox.showinfo("Success", "API keys saved successfully!")
 
     def start_program(self):
@@ -112,7 +129,7 @@ class TypeGPTGUI:
                 self.stop_button.config(state="normal")
                 self.master.update()
                 
-                self.process = subprocess.Popen(['python', 'TypeGPT.py'])
+                self._launch()
                 
                 self.master.after(500, self._check_process_status)
             except Exception as e:
@@ -121,18 +138,47 @@ class TypeGPTGUI:
                 self.start_button.config(state="normal")
                 self.stop_button.config(state="disabled")
 
+    def _launch(self):
+        self.process = subprocess.Popen([sys.executable, str(BASE_DIR / 'TypeGPT.py')], cwd=BASE_DIR)
+        log.info('[gui] started TypeGPT | pid=%d', self.process.pid)
+        self.status_label.config(text="Status: Running")
+
+    def _stopped(self, text):
+        log.info('[gui] TypeGPT stopped | %s', text.removeprefix('Status: '))
+        self.process = None
+        self.status_label.config(text=text)
+        self.start_button.config(state="normal")
+        self.stop_button.config(state="disabled")
+
     def _check_process_status(self):
         if self.process:
-            if self.process.poll() is not None:
-                self.process = None
-                self.status_label.config(text="Status: Not Running")
-                self.start_button.config(state="normal")
-                self.stop_button.config(state="disabled")
-            else:
+            exit_code = self.process.poll()
+            if exit_code is None:
                 self.master.after(1000, self._check_process_status)
+            elif exit_code == RESTART_EXIT_CODE:
+                log.info('[gui] TypeGPT asked to restart')
+                self._launch()
+                self.master.after(1000, self._check_process_status)
+            elif exit_code == 3:
+                self._stopped("Status: Needs Accessibility permission")
+            elif exit_code in STOP_EXIT_CODES:
+                self._stopped("Status: Not Running")
+            else:
+                # Crashed: relaunch, unless it keeps crashing
+                now = time.time()
+                self.crash_times = [t for t in self.crash_times if now - t < 60] + [now]
+                log.warning('[gui] TypeGPT exited unexpectedly | exit_code=%s crashes_last_minute=%d',
+                            exit_code, len(self.crash_times))
+                if len(self.crash_times) > MAX_CRASH_RESTARTS:
+                    self._stopped("Status: Keeps crashing, see typegpt.log")
+                else:
+                    self._launch()
+                    self.status_label.config(text="Status: Running (restarted after a crash)")
+                    self.master.after(1000, self._check_process_status)
 
     def stop_program(self):
         if self.process:
+            log.info('[gui] stop clicked | pid=%d', self.process.pid)
             os.kill(self.process.pid, signal.SIGTERM)
             self.process = None
             self.status_label.config(text="Status: Not Running")
@@ -140,6 +186,11 @@ class TypeGPTGUI:
             self.stop_button.config(state="disabled")
 
 if __name__ == "__main__":
+    handler = logging.FileHandler(BASE_DIR / 'typegpt.log')
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [pid %(process)d] %(message)s'))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.info('[gui] TypeGPT Manager opened')
     root = tk.Tk()
     app = TypeGPTGUI(root)
     root.mainloop()

@@ -1,3 +1,0 @@
-OPENAI_API_KEY=your-openai-key-here
-GEMINI_API_KEY=your-gemini-key-here
-ANTHROPIC_API_KEY=your-anthropic-key-here
