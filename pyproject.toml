@@ -12,6 +12,7 @@ dependencies = [
     "pyautogui>=0.9.54",
     "pynput>=1.8.2",
     "pypdf>=6.21.1",
+    "pypdfium2>=5.14.0",
     "pyperclip>=1.11.0",
     "requests>=2.34.2",
 ]

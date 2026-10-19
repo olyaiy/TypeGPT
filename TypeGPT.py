@@ -431,6 +431,9 @@ class TypeGPT:
 
     def run(self):
         log_startup(self.model)
+        if FILE_LIBRARY and FILE_LIBRARY.ocr:
+            # Read image-heavy PDF pages (slides) ahead of time so searches include them
+            threading.Thread(target=FILE_LIBRARY.index_ocr, name='ocr-index', daemon=True).start()
         crash_times = []
         while not self.should_quit:
             try:

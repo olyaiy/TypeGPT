@@ -12,3 +12,4 @@ nohup.out
 .env
 keys.txt
 models.local.toml
+.ocr_cache/

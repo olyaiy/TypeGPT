@@ -9,6 +9,12 @@ if [ ! -x "$UV" ]; then
     exit 1
 fi
 
+# --index: read the image-heavy PDF pages in your file folders now (OCR), then exit
+if [ "$1" == "--index" ]; then
+    "$UV" run python -c "import logging, api_calls; logging.basicConfig(level=logging.INFO, format='%(message)s'); logging.getLogger('httpx').setLevel(logging.WARNING); api_calls.FILE_LIBRARY.index_ocr()"
+    exit $?
+fi
+
 # Check if --no-gui flag is provided
 if [ "$1" == "--no-gui" ]; then
     # Run TypeGPT directly, relaunching it after /restart or a crash

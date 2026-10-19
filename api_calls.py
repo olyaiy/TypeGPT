@@ -76,7 +76,9 @@ PREFER_OPENROUTER = CONFIG.get('prefer_openrouter', False)
 SEARCH_MODEL = CONFIG.get('search_model', 'deepseek-v4-pro')
 LOG_PROMPTS = CONFIG.get('log_prompts', False)
 FILES_CONFIG = CONFIG.get('files', {})
-FILE_LIBRARY = FileLibrary(FILES_CONFIG.get('folders', []))
+OCR_MODEL = FILES_CONFIG.get('ocr_model', 'deepseek')  # A models.toml name; False turns OCR off
+FILE_LIBRARY = FileLibrary(FILES_CONFIG.get('folders', []), ocr_cache_dir=BASE_DIR / '.ocr_cache',
+                           ocr_model=OCR_MODEL or '')  # OCR function is attached below
 FILES_ALWAYS = FILES_CONFIG.get('always', False) and bool(FILE_LIBRARY)
 MAX_TOOL_ROUNDS = FILES_CONFIG.get('max_tool_rounds', 12)
 
@@ -480,14 +482,8 @@ def files_stream(model, text, image_base64=None):
         yield TEXT, "No folders are set up for file access. Add them under [files] in models.toml."
         return
     try:
-        provider, model_id = resolve_model(model)
+        provider, model_id = chat_completions_route(model)
         entry = MODELS.get(model, {})
-        if provider not in ('deepseek', 'openrouter'):
-            # Anthropic, OpenAI and Gemini models read files through OpenRouter
-            if entry.get('openrouter') and has_key('openrouter'):
-                provider, model_id = 'openrouter', entry['openrouter']
-            else:
-                raise ValueError(f"File access needs a DeepSeek model or OPENROUTER_API_KEY (selected: {model})")
     except ValueError as e:
         yield details(error=str(e))
         yield TEXT, f"Error: {e}"
@@ -516,12 +512,60 @@ def merge_reasoning_details(merged, new_items):
                 current[field] = value
 
 
-def run_file_tools(provider, model_id, text, image_base64):
+def chat_completions_route(model):
+    """(provider, model_id) for features that need the Chat Completions API (tools, OCR).
+
+    DeepSeek and OpenRouter models are used as they are; Anthropic, OpenAI and
+    Gemini models go through their OpenRouter ID.
+    """
+    provider, model_id = resolve_model(model)
+    if provider in ('deepseek', 'openrouter'):
+        return provider, model_id
+    entry = MODELS.get(model, {})
+    if entry.get('openrouter') and has_key('openrouter'):
+        return 'openrouter', entry['openrouter']
+    raise ValueError(f"This needs a DeepSeek model or OPENROUTER_API_KEY (selected: {model})")
+
+
+def chat_client(provider):
+    """An OpenAI-compatible client and extra request options for DeepSeek or OpenRouter."""
     if provider == 'deepseek':
-        client, extra = OpenAI(api_key=get_key('deepseek'), base_url=DEEPSEEK_URL), {}
-    else:
-        client = OpenAI(api_key=get_key('openrouter'), base_url=OPENROUTER_URL)
-        extra = {"extra_headers": {"HTTP-Referer": "https://github.com/olyaiy/TypeGPT", "X-OpenRouter-Title": "TypeGPT"}}
+        return OpenAI(api_key=get_key('deepseek'), base_url=DEEPSEEK_URL), {}
+    client = OpenAI(api_key=get_key('openrouter'), base_url=OPENROUTER_URL)
+    return client, {"extra_headers": {"HTTP-Referer": "https://github.com/olyaiy/TypeGPT",
+                                      "X-OpenRouter-Title": "TypeGPT"}}
+
+
+OCR_PROMPT = (
+    "Transcribe all the text on this page exactly, including text inside images. "
+    "Then describe each picture, chart or diagram in one or two sentences: what it shows and "
+    "any labels or numbers in it. Skip decorative shapes and backgrounds. Plain text only."
+)
+
+
+def ocr_image(jpeg_bytes):
+    """Reads a page image with the OCR model (DeepSeek Flash by default). Used by file_tools."""
+    provider, model_id = chat_completions_route(OCR_MODEL)
+    client, extra = chat_client(provider)
+    if provider == 'deepseek':
+        extra['extra_body'] = {"thinking": {"type": "disabled"}}  # Faster and cheaper; not needed to transcribe
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": OCR_PROMPT},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg_bytes).decode()}},
+        ]}],
+        **extra,
+    )
+    return (response.choices[0].message.content or '').strip()
+
+
+if OCR_MODEL:
+    FILE_LIBRARY.ocr = ocr_image
+
+
+def run_file_tools(provider, model_id, text, image_base64):
+    client, extra = chat_client(provider)
 
     content = [{"type": "text", "text": text}]
     if image_base64:

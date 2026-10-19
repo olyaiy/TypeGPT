@@ -49,6 +49,8 @@ folders = ["~/Documents/course-notes"]
 always = true   # every /a and /see question can use the files; false = only /files
 ```
 
+PDF pages that are mostly images, like lecture slides, are also read by a vision model (DeepSeek Flash by default, set with `ocr_model`), so the text and diagrams in them are searchable. This runs in the background when TypeGPT starts and is cached, so each page is read once. Run `typegpt --index` to do it right away.
+
 Then type `/files` (or just `/a` with `always = true`), your question, and `Cmd+Shift+Enter`. You'll see `(reading files)` while it looks. Nothing outside the listed folders is reachable, and it can't change or delete anything. File access works with DeepSeek models, or with any model when `OPENROUTER_API_KEY` is set (Claude, GPT and Gemini go through OpenRouter for this).
 
 ### Web search

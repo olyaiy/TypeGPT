@@ -1,11 +1,21 @@
 """Read-only file tools the model can call: list, search and read files
 inside the folders listed under [files] in models.toml, and nowhere else.
+
+PDF pages that are mostly images (like lecture slides) are also read by a
+vision model (OCR), so the text and diagrams in the images become searchable.
+OCR results are cached in .ocr_cache, so each page is only read once.
 """
+import hashlib
+import io
 import json
 import logging
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pypdfium2
 from pypdf import PdfReader
 
 log = logging.getLogger('typegpt')
@@ -21,6 +31,10 @@ MAX_READ_CHARS = 24000    # Most text one read_file call returns
 MAX_LIST_ENTRIES = 400
 MAX_SEARCH_RESULTS = 40
 MAX_FILE_BYTES = 50_000_000
+OCR_TEXT_LIMIT = 1500     # PDF pages with images and less text than this get OCR
+OCR_RENDER_SCALE = 1.5    # 1.5x a 720pt-wide slide is about 1080px
+OCR_WORKERS = 6
+OCR_LABEL = '[read from the page image]'
 
 
 class FileAccessError(Exception):
@@ -30,7 +44,7 @@ class FileAccessError(Exception):
 class FileLibrary:
     """The allowed folders, with a cache of extracted text."""
 
-    def __init__(self, folders):
+    def __init__(self, folders, ocr=None, ocr_cache_dir=None, ocr_model=''):
         self.roots = {}  # Display name -> resolved folder
         for folder in folders:
             path = Path(folder).expanduser().resolve()
@@ -41,7 +55,13 @@ class FileLibrary:
             while name in self.roots:
                 name += '_'
             self.roots[name] = path
-        self._cache = {}  # Resolved path -> (mtime, pages)
+        self._cache = {}  # Resolved path -> (mtime, pages, indexes of pages that need OCR)
+        self.ocr = ocr  # Function: JPEG bytes -> text, or None to skip OCR
+        self.ocr_cache_dir = Path(ocr_cache_dir) if ocr_cache_dir else None
+        self.ocr_model = ocr_model
+        self._ocr_lock = threading.Lock()     # One writer for the cache files
+        self._render_lock = threading.Lock()  # PDFium isn't thread-safe
+        self._hashes = {}  # (path, mtime) -> content hash, the OCR cache key
 
     def __bool__(self):
         return bool(self.roots)
@@ -86,26 +106,134 @@ class FileLibrary:
 
     # Text extraction -------------------------------------------------------
 
-    def pages(self, path):
-        """The file's text as a list of pages (PDF pages, or chunks of a text file)."""
+    def pages(self, path, ocr_now=False):
+        """The file's text as a list of pages (PDF pages, or chunks of a text file).
+
+        Pages that are mostly images include their OCR text once it's cached.
+        ocr_now=True reads any of this file's missing pages first (used by read_file).
+        """
         path = path.resolve()
         mtime = path.stat().st_mtime
         cached = self._cache.get(path)
-        if cached and cached[0] == mtime:
-            return cached[1]
+        if not cached or cached[0] != mtime:
+            cached = (mtime, *self._extract(path))
+            self._cache[path] = cached
+        _, pages, needs_ocr = cached
+        if not needs_ocr or not self.ocr:
+            return pages
 
+        ocr_texts = self._load_ocr(path)
+        missing = [i for i in needs_ocr if str(i + 1) not in ocr_texts]
+        if ocr_now and missing:
+            ocr_texts.update(self._run_ocr(path, missing))
+        return [combine(text, ocr_texts.get(str(i + 1))) for i, text in enumerate(pages)]
+
+    def _extract(self, path):
         if path.suffix.lower() not in READABLE_EXTENSIONS:
             raise FileAccessError(f'Can\'t read {path.suffix or "this"} files. Readable: PDF and text files')
         if path.stat().st_size > MAX_FILE_BYTES:
             raise FileAccessError('File is too large to read')
 
-        if path.suffix.lower() == '.pdf':
-            pages = [(page.extract_text() or '').strip() for page in PdfReader(path).pages]
-        else:
+        if path.suffix.lower() != '.pdf':
             text = path.read_text(errors='replace')
-            pages = [text[i:i + CHUNK_CHARS] for i in range(0, len(text), CHUNK_CHARS)] or ['']
-        self._cache[path] = (mtime, pages)
-        return pages
+            return [text[i:i + CHUNK_CHARS] for i in range(0, len(text), CHUNK_CHARS)] or [''], []
+
+        pages, needs_ocr = [], []
+        for i, page in enumerate(PdfReader(path).pages):
+            text = (page.extract_text() or '').strip()
+            pages.append(text)
+            if len(text) < OCR_TEXT_LIMIT:
+                try:
+                    has_images = bool(page.images)
+                except Exception:
+                    has_images = not text  # Can't tell; OCR only if there's no text at all
+                if has_images:
+                    needs_ocr.append(i)
+        return pages, needs_ocr
+
+    # OCR -------------------------------------------------------------------
+
+    def _ocr_cache_file(self, path):
+        key = (path, path.stat().st_mtime)
+        if key not in self._hashes:
+            self._hashes[key] = hashlib.sha256(path.read_bytes()).hexdigest()[:24]
+        return self.ocr_cache_dir / f'{self._hashes[key]}.json'
+
+    def _load_ocr(self, path):
+        if not self.ocr_cache_dir:
+            return {}
+        cache_file = self._ocr_cache_file(path)
+        try:
+            return json.loads(cache_file.read_text())['pages']
+        except (FileNotFoundError, ValueError, KeyError):
+            return {}
+
+    def _run_ocr(self, path, page_indexes):
+        """Reads the given pages' images with the OCR model; returns {page number: text}."""
+        started = time.monotonic()
+        images = {}
+        with self._render_lock:
+            pdf = pypdfium2.PdfDocument(str(path))
+            try:
+                for i in page_indexes:
+                    image = pdf[i].render(scale=OCR_RENDER_SCALE).to_pil().convert('RGB')
+                    buffer = io.BytesIO()
+                    image.save(buffer, 'JPEG', quality=85)
+                    images[i] = buffer.getvalue()
+            finally:
+                pdf.close()
+
+        def read(i):
+            try:
+                return i, self.ocr(images[i])
+            except Exception as e:
+                log.warning('files | OCR failed for %s p.%d: %s', self.display(path), i + 1, e)
+                return i, None
+
+        results = {}
+        with ThreadPoolExecutor(OCR_WORKERS) as pool:
+            for i, text in pool.map(read, page_indexes):
+                if text:
+                    results[str(i + 1)] = text
+
+        if results and self.ocr_cache_dir:
+            with self._ocr_lock:
+                self.ocr_cache_dir.mkdir(exist_ok=True)
+                cache_file = self._ocr_cache_file(path)
+                saved = self._load_ocr(path)
+                saved.update(results)
+                cache_file.write_text(json.dumps(
+                    {'file': self.display(path), 'model': self.ocr_model, 'pages': saved}, indent=1))
+        log.info('files | OCR %s | %d/%d pages read in %.1fs', self.display(path), len(results),
+                 len(page_indexes), time.monotonic() - started)
+        return results
+
+    def index_ocr(self):
+        """OCRs every image-heavy PDF page that isn't cached yet. Run in the background at startup."""
+        if not self.ocr:
+            return
+        started = time.monotonic()
+        files = cached = read = 0
+        for root in self.roots.values():
+            for path in self.files_under(root):
+                if path.suffix.lower() != '.pdf':
+                    continue
+                try:
+                    path = path.resolve()
+                    self.pages(path)  # Fills the extraction cache
+                    needs_ocr = self._cache[path][2]
+                    if not needs_ocr:
+                        continue
+                    files += 1
+                    done = self._load_ocr(path)
+                    missing = [i for i in needs_ocr if str(i + 1) not in done]
+                    cached += len(needs_ocr) - len(missing)
+                    if missing:
+                        read += len(self._run_ocr(path, missing))
+                except Exception:
+                    log.warning('files | OCR indexing failed for %s', path, exc_info=True)
+        log.info('files | OCR index ready | files=%d pages_read=%d pages_already_cached=%d time=%.1fs',
+                 files, read, cached, time.monotonic() - started)
 
     # Tools -----------------------------------------------------------------
 
@@ -136,7 +264,7 @@ class FileLibrary:
         exact, partial = [], []
         for file in files:
             try:
-                pages = self.pages(file)
+                pages = self.pages(file)  # Uses OCR text that's already cached
             except Exception as e:
                 log.warning('files | could not read %s: %s', file, e)
                 continue
@@ -163,7 +291,7 @@ class FileLibrary:
         file = self.resolve(path)
         if file.is_dir():
             raise FileAccessError('That is a folder; use list_files')
-        pages = self.pages(file)
+        pages = self.pages(file, ocr_now=True)
         unit = 'page' if file.suffix.lower() == '.pdf' else 'part'
         start = max(1, int(start_page or 1))
         end = min(len(pages), int(end_page or len(pages)))
@@ -201,6 +329,15 @@ class FileLibrary:
         except Exception as e:
             log.warning('files | tool %s failed', name, exc_info=True)
             return f'Error: {type(e).__name__}: {e}'
+
+
+def combine(text, ocr_text):
+    """A page's extracted text plus what OCR read from its image."""
+    if not ocr_text:
+        return text
+    if len(text.strip()) < 20:
+        return f'{OCR_LABEL}\n{ocr_text}'
+    return f'{text}\n\n{OCR_LABEL}\n{ocr_text}'
 
 
 # Tool definitions in the OpenAI Chat Completions format (DeepSeek, OpenRouter)

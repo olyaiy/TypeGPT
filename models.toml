@@ -35,6 +35,10 @@ log_prompts = false
 folders = []
 # true: every /a and /see question can read these folders too, not just /files
 always = false
+# PDF pages that are mostly images (slides) are read by this model (OCR) so
+# their text and diagrams are searchable. A models.toml name; false turns it off.
+# Results are cached in .ocr_cache, so each page is read once.
+ocr_model = "deepseek"
 
 [models.opus]
 provider = "anthropic"
