@@ -57,6 +57,14 @@ aliases = ["chatgpt"]
 provider = "deepseek"
 model = "deepseek-flash"
 openrouter = "~deepseek/deepseek-flash-latest"
+aliases = ["flash", "dsflash"]
+
+# Commands run as soon as they're typed, so a name can't start with another
+# command's name (/deepseekpro would never get past /deepseek)
+[models.dspro]
+provider = "deepseek"
+model = "deepseek-v4-pro"
+openrouter = "deepseek/deepseek-v4-pro"
 
 [models.gemini]
 provider = "gemini"

@@ -120,6 +120,11 @@ class TypeGPT:
         }
         for command, model in MODEL_COMMANDS.items():
             self.commands[f'/{command}'] = lambda model=model: self.select_model(model)
+        # A command fires as soon as it's typed, so one that starts with another can't be reached
+        for command in self.commands:
+            shorter = [c for c in self.commands if c != command and command.startswith(c)]
+            if shorter:
+                log.warning('command %s can never run: %s fires first. Rename it in models.toml', command, shorter[0])
 
     @guarded()
     def on_press(self, key, injected=False):

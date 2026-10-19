@@ -25,7 +25,8 @@ https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0
 | `/opus` (default, also `/claude`) | `claude-opus-5-5` | Anthropic |
 | `/sonnet` | `claude-sonnet-5-5` | Anthropic |
 | `/gpt` (also `/chatgpt`) | `gpt-6.1-sol` | OpenAI |
-| `/deepseek` | `deepseek-flash` | DeepSeek |
+| `/deepseek` (also `/flash`, `/dsflash`) | `deepseek-flash` | DeepSeek |
+| `/dspro` | `deepseek-v4-pro` | DeepSeek |
 | `/gemini` | `gemini-4-argon` | Google |
 
 To add a model, add an entry to `models.toml`:
