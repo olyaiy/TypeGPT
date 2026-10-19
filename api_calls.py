@@ -1,4 +1,5 @@
 import base64
+import datetime
 import tomllib
 from pathlib import Path
 
@@ -19,6 +20,7 @@ KEY_NAMES = {
 }
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
+DEEPSEEK_URL = "https://api.deepseek.com"
 
 
 def read_api_keys(file_path):
@@ -46,11 +48,12 @@ def load_models(file_path):
         for alias in entry.get('aliases', []):
             commands[alias] = name
     default = config.get('default', next(iter(models)))
-    return default, models, commands, config.get('prefer_openrouter', False)
+    return (default, models, commands, config.get('prefer_openrouter', False),
+            config.get('search_model', 'deepseek-v4-pro'))
 
 
 api_keys = read_api_keys(BASE_DIR / 'keys.txt')
-DEFAULT_MODEL, MODELS, MODEL_COMMANDS, PREFER_OPENROUTER = load_models(BASE_DIR / 'models.toml')
+DEFAULT_MODEL, MODELS, MODEL_COMMANDS, PREFER_OPENROUTER, SEARCH_MODEL = load_models(BASE_DIR / 'models.toml')
 
 # System prompt text
 with open(BASE_DIR / 'system_prompt.txt', 'r') as file:
@@ -104,9 +107,11 @@ def resolve_model(model):
 
 
 # Each query_* function is a generator of (kind, value) events:
-#   (THINKING, None) while the model is reasoning
-#   (TEXT, "...")    for each piece of the answer
+#   (THINKING, None)  while the model is reasoning
+#   (SEARCHING, None) while it searches the web (/search only)
+#   (TEXT, "...")     for each piece of the answer
 THINKING = 'thinking'
+SEARCHING = 'searching'
 TEXT = 'text'
 
 
@@ -199,7 +204,7 @@ def stream_chat_completions(client, model_id, text, image_base64=None, **kwargs)
 
 # Function to query DeepSeek (OpenAI-compatible Chat Completions API)
 def query_deepseek(model_id, text, image_base64=None):
-    client = OpenAI(api_key=get_key('deepseek'), base_url="https://api.deepseek.com")
+    client = OpenAI(api_key=get_key('deepseek'), base_url=DEEPSEEK_URL)
     yield from stream_chat_completions(client, model_id, text, image_base64)
 
 
@@ -298,6 +303,38 @@ def api_stream(model, text, image_base64=None):
         yield from PROVIDERS[provider](model_id, text, image_base64)
     except Exception as e:
         yield TEXT, f"Error in {model} ({provider}: {model_id}) API call: {e}"
+
+
+# /search: DeepSeek's built-in web search (Responses API). DeepSeek runs the
+# searches on its servers and the model answers from the results.
+def search_stream(text):
+    try:
+        client = OpenAI(api_key=get_key('deepseek'), base_url=DEEPSEEK_URL)
+        stream = client.responses.create(
+            model=SEARCH_MODEL,
+            tools=[{"type": "web_search"}],
+            # The model doesn't know today's date, and searches for the wrong year without it
+            instructions=f"Today's date is {datetime.date.today():%B %d, %Y}. "
+                         "Search the web to answer with current information.",
+            input=text,
+            stream=True,
+        )
+        answered = False
+        for event in stream:
+            if event.type == "response.output_item.added":
+                if event.item.type == "reasoning":
+                    yield THINKING, None
+                elif event.item.type == "web_search_call":
+                    yield SEARCHING, None
+            elif event.type == "response.output_text.delta":
+                answered = True
+                yield TEXT, event.delta
+            elif event.type == "response.failed":
+                raise RuntimeError(event.response.error.message if event.response.error else "response failed")
+        if not answered:
+            yield TEXT, "The search finished without an answer. Try rephrasing the question."
+    except Exception as e:
+        yield TEXT, f"Error in /search ({SEARCH_MODEL}): {e}"
 
 
 def api_call(model, text, image_base64=None):

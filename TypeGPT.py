@@ -3,7 +3,8 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import api_stream, openrouter_model_exists, DEFAULT_MODEL, MODELS, MODEL_COMMANDS, THINKING
+from api_calls import (api_stream, search_stream, openrouter_model_exists, DEFAULT_MODEL, MODELS,
+                       MODEL_COMMANDS, SEARCH_MODEL, THINKING, SEARCHING)
 import sys
 from PIL import Image, ImageGrab
 import io
@@ -19,7 +20,8 @@ MODIFIER_KEYS = (
 )
 SHIFT_KEYS = {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}
 PASTE_CHARS = ('v', 'V', '\x16')  # '\x16' is what Ctrl+V reports on some platforms
-THINKING_LABEL = '(thinking)'
+# Shown while the model works, erased when the answer starts
+STATUS_LABELS = {THINKING: '(thinking)', SEARCHING: '(searching)'}
 SEND_KEYS = 'Cmd+Shift+Enter' if IS_MAC else 'Ctrl+Shift+Enter'
 # press() types these literally, so map them to the real keys
 CONTROL_KEYS = {'\n': keyboard.Key.enter, '\r': keyboard.Key.enter, '\t': keyboard.Key.tab}
@@ -46,6 +48,7 @@ class TypeGPT:
             '/stop': self.stop_listening,
             '/a': lambda: self.set_mode('line'),
             '/see': self.capture_screenshot,
+            '/search': lambda: self.set_mode('search'),
             '/model': lambda: self.set_mode('model'),
             '/check': self.check_model,
             '/restart': self.restart,
@@ -146,7 +149,13 @@ class TypeGPT:
             self.captured_text = ''
 
     def capture_screenshot(self):
-        self.screenshot = pyautogui.screenshot()
+        try:
+            self.screenshot = pyautogui.screenshot()
+        except Exception:
+            # Usually missing Screen Recording permission on macOS
+            self.cancel_input()
+            self.type_output(" ...screenshot failed. Allow Screen Recording for this app in System Settings.")
+            return
         buffered = BytesIO()
         self.screenshot.save(buffered, format="PNG")
         self.screenshot_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -174,6 +183,8 @@ class TypeGPT:
             self.type_output(": ")
         elif mode == 'model':
             self.type_output(" model: ")
+        elif mode == 'search':
+            self.type_output(" search: ")
 
     def select_model(self, model):
         self.model = model
@@ -199,6 +210,7 @@ class TypeGPT:
             'TypeGPT commands:',
             f'/a  ask a question, then {SEND_KEYS} to send',
             f'/see  ask about a screenshot, then {SEND_KEYS} to send',
+            f'/search  ask with web search ({SEARCH_MODEL}), then {SEND_KEYS} to send',
             f'/model  type any OpenRouter model ID, then {SEND_KEYS}',
             '/check  show the active model',
             '/stop  cancel input (or press Esc)',
@@ -221,20 +233,21 @@ class TypeGPT:
     def process_enter_key(self):
         if self.listening and self.mode == 'model':
             self.choose_model(self.captured_text.strip())
-        elif self.listening and self.mode in ['line', 'screenshot']:
+        elif self.listening and self.mode in ['line', 'screenshot', 'search']:
             if self.busy:
                 return  # Still answering the previous prompt
             text, screenshot_base64 = self.captured_text, self.screenshot_base64
+            search = self.mode == 'search'
             self.cancel_input()
             self.busy = True
             # Answer on a separate thread so the keyboard listener never blocks
             threading.Thread(
                 target=self.process_text,
-                args=(text, self.model, screenshot_base64),
+                args=(text, self.model, screenshot_base64, search),
                 daemon=True,
             ).start()
 
-    def process_text(self, text, model, screenshot_base64=None):
+    def process_text(self, text, model, screenshot_base64=None, search=False):
         try:
             self.type_output(' ...\n')
             prompt = text.strip()
@@ -245,21 +258,28 @@ class TypeGPT:
                 image_base64, after = rest.split(']', 1)
                 prompt = (before + after).strip()
 
-            thinking_shown = False
+            if search:
+                events = search_stream(prompt)  # Search ignores pasted images
+            else:
+                events = api_stream(model, prompt, image_base64)
+
+            label = None  # The status label currently on screen
             answer_started = False
-            for kind, value in api_stream(model, prompt, image_base64):
-                if kind == THINKING:
-                    if not thinking_shown and not answer_started:
-                        self.type_output(THINKING_LABEL)
-                        thinking_shown = True
+            for kind, value in events:
+                if kind in STATUS_LABELS:
+                    if not answer_started and label != STATUS_LABELS[kind]:
+                        if label:
+                            self.erase(len(label))
+                        label = STATUS_LABELS[kind]
+                        self.type_output(label)
                 else:
-                    if thinking_shown:
-                        self.erase(len(THINKING_LABEL))
-                        thinking_shown = False
+                    if label:
+                        self.erase(len(label))
+                        label = None
                     answer_started = True
                     self.type_output(value)
-            if thinking_shown:
-                self.erase(len(THINKING_LABEL))
+            if label:
+                self.erase(len(label))
         finally:
             self.busy = False
 

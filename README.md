@@ -38,6 +38,10 @@ model = "claude-haiku-5-5"
 
 It's then available as `/haiku`. Any model you've pulled in Ollama works the same way with `provider = "ollama"`.
 
+### Web search
+
+`/search` answers with live web results using DeepSeek's built-in web search (`deepseek-v4-pro`). Type `/search`, your question, then `Cmd+Shift+Enter`. It always uses DeepSeek, whichever model is selected, and needs `DEEPSEEK_API_KEY`. While it works you'll see `(thinking)` and `(searching)`. DeepSeek charges per search (about $0.75 per 1,000 searches) on top of tokens. Change the model with `search_model` in `models.toml`.
+
 ### OpenRouter
 
 With an `OPENROUTER_API_KEY`, one key covers every model:
@@ -85,6 +89,7 @@ TypeGPT needs to watch and type keystrokes:
 
 1. Open System Settings > Privacy & Security
 2. Under **Accessibility** and **Input Monitoring**, add and enable the app you run TypeGPT from (e.g. Terminal, iTerm, or VS Code)
+   - For `/see`, also enable it under **Screen Recording**
 3. Restart TypeGPT
 
 TypeGPT checks Accessibility access on startup and tells you if it's missing.
@@ -109,6 +114,7 @@ Use the following commands in any text field:
 ### Basic Commands
 - `/a`: Start a prompt
 - `/see`: Capture a screenshot and start a prompt about it
+- `/search`: Ask a question with web search (DeepSeek, needs `DEEPSEEK_API_KEY`)
 - `/stop`: Stop listening
 - `/quit`: Quit the program
 - `/restart`: Restart the program
