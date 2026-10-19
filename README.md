@@ -138,6 +138,7 @@ Use the following commands in any text field:
 1. `keys.txt`: API keys (see above)
 2. `models.toml`: Available models, commands, and the default model
 3. `system_prompt.txt`: System prompt sent to every model. By default it asks for plain text only (no Markdown), since replies are typed into ordinary text fields
+4. `typegpt.log`: Log of every request (model, routing, timing, thinking and search time, token usage, request IDs, errors), commands, and crashes. Prompts and answers are only logged if you set `log_prompts = true` in `models.toml`. Keystrokes are never logged
 
 ## Contributing
 

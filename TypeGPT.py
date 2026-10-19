@@ -3,14 +3,17 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
+import api_calls
 from api_calls import (api_stream, search_stream, openrouter_model_exists, DEFAULT_MODEL, MODELS,
-                       MODEL_COMMANDS, SEARCH_MODEL, THINKING, SEARCHING)
+                       MODEL_COMMANDS, SEARCH_MODEL, LOG_PROMPTS, THINKING, SEARCHING, TEXT)
+from request_log import RequestTrace, describe_image
 import sys
 from PIL import Image, ImageGrab
 import io
 import logging
 import logging.handlers
 import platform
+import signal
 import threading
 import time
 from pathlib import Path
@@ -29,7 +32,7 @@ log = logging.getLogger('typegpt')
 def setup_logging():
     log.setLevel(logging.INFO)
     file_handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=1)
-    file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+    file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [pid %(process)d] %(message)s'))
     log.addHandler(file_handler)
     log.addHandler(logging.StreamHandler())
     # Anything uncaught, on any thread, ends up in the log
@@ -99,6 +102,9 @@ class TypeGPT:
         self.should_quit = False
         self.should_restart = False
         self.busy = False
+        self.started_at = time.monotonic()
+        self.request_count = 0
+        self.screenshot_source = None
         self.commands = {
             '/quit': self.quit,
             '/stop': self.stop_listening,
@@ -133,7 +139,8 @@ class TypeGPT:
             return True
         self.handle_special_keys(key, pressed=False)
 
-        if key == keyboard.Key.esc:
+        if key == keyboard.Key.esc and self.listening:
+            log.info('input cancelled with Esc | mode=%s chars_discarded=%d', self.mode, len(self.captured_text))
             self.cancel_input()
 
         if (key == keyboard.Key.enter and
@@ -192,9 +199,12 @@ class TypeGPT:
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             self.captured_text += f"[IMAGE:{img_str}]"
+            log.info('paste | image %dx%d (%d KB)', image.width, image.height, len(buffered.getvalue()) // 1024)
             self.type_output("(image pasted)")
         else:
-            self.captured_text += pyperclip.paste()
+            text = pyperclip.paste()
+            self.captured_text += text
+            log.info('paste | text %d chars', len(text))
 
     def process_commands(self):
         func = self.commands.get(self.captured_text)
@@ -207,24 +217,30 @@ class TypeGPT:
             self.captured_text = ''
 
     def capture_screenshot(self):
+        started = time.monotonic()
         try:
             self.screenshot = pyautogui.screenshot()
         except Exception:
             # Usually missing Screen Recording permission on macOS
+            log.warning('command /see: screenshot failed (Screen Recording permission?)', exc_info=True)
             self.cancel_input()
             self.type_output(" ...screenshot failed. Allow Screen Recording for this app in System Settings.")
             return
         buffered = BytesIO()
         self.screenshot.save(buffered, format="PNG")
         self.screenshot_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        log.info('command /see | screenshot %dx%d (%d KB) in %.2fs', self.screenshot.width, self.screenshot.height,
+                 len(buffered.getvalue()) // 1024, time.monotonic() - started)
         self.type_output(" ss captured: ")
         self.mode = 'screenshot'
 
     def quit(self):
+        log.info('command /quit')
         self.type_output(' ...quitting.')
         self.should_quit = True  # Set the flag to quit
 
     def stop_listening(self):
+        log.info('command /stop')
         self.cancel_input()
         self.type_output(' ...stopped.')
 
@@ -236,6 +252,7 @@ class TypeGPT:
         self.screenshot_base64 = None
 
     def set_mode(self, mode):
+        log.info('input started | mode=%s model=%s', mode, self.model)
         self.mode = mode
         if mode == 'line':
             self.type_output(": ")
@@ -245,6 +262,7 @@ class TypeGPT:
             self.type_output(" search: ")
 
     def select_model(self, model):
+        log.info('model switched | %s -> %s (%s)', self.model, model, MODELS.get(model, {}).get('model', model))
         self.model = model
         self.listening = False
         self.type_output(f' ... {model.capitalize()} selected.')
@@ -255,12 +273,15 @@ class TypeGPT:
         if name in MODEL_COMMANDS:
             self.select_model(MODEL_COMMANDS[name])
         elif openrouter_model_exists(name):
+            log.info('model switched | %s -> %s (OpenRouter, via /model)', self.model, name)
             self.model = name
             self.type_output(f' ... {name} selected (OpenRouter).')
         else:
+            log.info('command /model: unknown model %r', name)
             self.type_output(f' ... unknown model: {name}')
 
     def show_help(self):
+        log.info('command /help')
         self.listening = False
         self.mode = None
         lines = [
@@ -284,6 +305,7 @@ class TypeGPT:
         threading.Thread(target=self.type_output, args=('\n'.join(lines),), daemon=True).start()
 
     def check_model(self):
+        log.info('command /check | model=%s', self.model)
         self.type_output(f" -> {self.model} selected.")
         self.listening = False
         self.mode = None
@@ -293,30 +315,37 @@ class TypeGPT:
             self.choose_model(self.captured_text.strip())
         elif self.listening and self.mode in ['line', 'screenshot', 'search']:
             if self.busy:
-                return  # Still answering the previous prompt
+                log.info('send ignored | still answering the previous request')
+                return
             text, screenshot_base64 = self.captured_text, self.screenshot_base64
-            search = self.mode == 'search'
+            command = {'line': '/a', 'screenshot': '/see', 'search': '/search'}[self.mode]
             self.cancel_input()
             self.busy = True
             # Answer on a separate thread so the keyboard listener never blocks
             threading.Thread(
                 target=self.process_text,
-                args=(text, self.model, screenshot_base64, search),
+                args=(text, self.model, screenshot_base64, command == '/search', command),
                 daemon=True,
             ).start()
 
-    def process_text(self, text, model, screenshot_base64=None, search=False):
+    def process_text(self, text, model, screenshot_base64=None, search=False, command='/a'):
         label = None  # The status label currently on screen
+        trace = None
         try:
             self.type_output(' ...\n')
             prompt = text.strip()
             image_base64 = screenshot_base64
+            image = describe_image(screenshot_base64, 'screenshot')
 
             if '[IMAGE:' in prompt:
                 before, rest = prompt.split('[IMAGE:', 1)
                 image_base64, after = rest.split(']', 1)
                 prompt = (before + after).strip()
+                image = describe_image(image_base64, 'pasted')
 
+            self.request_count += 1
+            trace = RequestTrace(command, 'search' if search else model, prompt,
+                                 image if not search else None, LOG_PROMPTS)
             if search:
                 events = search_stream(prompt)  # Search ignores pasted images
             else:
@@ -324,6 +353,9 @@ class TypeGPT:
 
             answer_started = False
             for kind, value in events:
+                trace.event(kind, value)
+                if kind not in STATUS_LABELS and kind != TEXT:
+                    continue  # Log details only
                 if kind in STATUS_LABELS:
                     if not answer_started and label != STATUS_LABELS[kind]:
                         if label:
@@ -335,12 +367,17 @@ class TypeGPT:
                         self.erase(len(label))
                         label = None
                     answer_started = True
+                    typing_started = time.monotonic()
                     self.type_output(value)
+                    trace.add_typing(time.monotonic() - typing_started)
             if label:
                 self.erase(len(label))
                 label = None
-        except Exception:
+            trace.finish()
+        except Exception as e:
             log.exception('Error while answering')
+            if trace:
+                trace.finish(exception=e)
             try:
                 if label:
                     self.erase(len(label))
@@ -373,17 +410,20 @@ class TypeGPT:
                     log.warning('Could not type %r, skipped it', char)
 
     def restart(self):
+        log.info('command /restart')
         self.type_output(' ...restarting.')
         self.should_restart = True
         self.should_quit = True
 
     def run(self):
-        log.info('TypeGPT started (model: %s)', self.model)
+        log_startup(self.model)
         crash_times = []
         while not self.should_quit:
             try:
                 with SafeListener(on_press=self.on_press, on_release=self.on_release) as listener:
+                    log.info('keyboard listener started')
                     listener.join()
+                log.info('keyboard listener stopped')
             except Exception:
                 log.exception('Keyboard listener stopped unexpectedly')
             if self.should_quit:
@@ -400,9 +440,23 @@ class TypeGPT:
             log.info('Restarting keyboard listener')
             time.sleep(1)
 
+        log.info('TypeGPT exiting | reason=%s uptime=%.0fs requests=%d',
+                 'restart' if self.should_restart else 'quit',
+                 time.monotonic() - self.started_at, self.request_count)
         if self.should_restart:
             sys.exit(EXIT_RESTART)
         sys.exit(0)
+
+
+def log_startup(model):
+    from importlib.metadata import version
+    keys = [name for provider, name in api_calls.KEY_NAMES.items() if api_calls.has_key(provider)]
+    log.info('TypeGPT started | python=%s platform=%s pynput=%s', platform.python_version(),
+             platform.platform(), version('pynput'))
+    log.info('config | model=%s models=%s search_model=%s prefer_openrouter=%s log_prompts=%s '
+             'system_prompt_chars=%d keys_set=%s',
+             model, ','.join(MODELS), SEARCH_MODEL, api_calls.PREFER_OPENROUTER, LOG_PROMPTS,
+             len(api_calls.system_prompt), ','.join(keys) or 'none')
 
 
 def check_permissions():
@@ -412,7 +466,10 @@ def check_permissions():
         from ApplicationServices import AXIsProcessTrusted
     except ImportError:
         return  # Can't check; pynput will still work if access was granted
-    if not AXIsProcessTrusted():
+    if AXIsProcessTrusted():
+        log.info('permissions | Accessibility granted')
+    else:
+        log.error('permissions | Accessibility not granted, exiting')
         print("\nAccessibility Permissions Required!")
         print("\nPlease follow these steps to enable accessibility access:")
         print("1. Open System Settings")
@@ -423,8 +480,14 @@ def check_permissions():
         sys.exit(EXIT_NO_PERMISSIONS)
 
 
+def handle_sigterm(signum, frame):
+    log.info('TypeGPT exiting | reason=stopped (SIGTERM, e.g. GUI Stop button)')
+    sys.exit(0)
+
+
 if __name__ == "__main__":
     setup_logging()
+    signal.signal(signal.SIGTERM, handle_sigterm)
     check_permissions()
     typegpt = TypeGPT()
     typegpt.run()

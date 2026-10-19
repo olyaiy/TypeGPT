@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import subprocess
 import os
+import logging
 import signal
 import sys
 import time
@@ -9,6 +10,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 KEYS_FILE = BASE_DIR / 'keys.txt'
+log = logging.getLogger('typegpt.gui')
 RESTART_EXIT_CODE = 42
 # Exits that mean "stay stopped": quit, too many crashes, missing permissions
 STOP_EXIT_CODES = {0, 2, 3}
@@ -115,6 +117,8 @@ class TypeGPTGUI:
         with open(KEYS_FILE, 'w') as file:
             for key, entry in self.key_entries.items():
                 file.write(f"{key}={entry.get()}\n")
+        saved = [key for key, entry in self.key_entries.items() if entry.get().strip()]
+        log.info('[gui] keys saved | set=%s', ','.join(saved) or 'none')
         messagebox.showinfo("Success", "API keys saved successfully!")
 
     def start_program(self):
@@ -136,9 +140,11 @@ class TypeGPTGUI:
 
     def _launch(self):
         self.process = subprocess.Popen([sys.executable, str(BASE_DIR / 'TypeGPT.py')], cwd=BASE_DIR)
+        log.info('[gui] started TypeGPT | pid=%d', self.process.pid)
         self.status_label.config(text="Status: Running")
 
     def _stopped(self, text):
+        log.info('[gui] TypeGPT stopped | %s', text.removeprefix('Status: '))
         self.process = None
         self.status_label.config(text=text)
         self.start_button.config(state="normal")
@@ -150,6 +156,7 @@ class TypeGPTGUI:
             if exit_code is None:
                 self.master.after(1000, self._check_process_status)
             elif exit_code == RESTART_EXIT_CODE:
+                log.info('[gui] TypeGPT asked to restart')
                 self._launch()
                 self.master.after(1000, self._check_process_status)
             elif exit_code == 3:
@@ -160,6 +167,8 @@ class TypeGPTGUI:
                 # Crashed: relaunch, unless it keeps crashing
                 now = time.time()
                 self.crash_times = [t for t in self.crash_times if now - t < 60] + [now]
+                log.warning('[gui] TypeGPT exited unexpectedly | exit_code=%s crashes_last_minute=%d',
+                            exit_code, len(self.crash_times))
                 if len(self.crash_times) > MAX_CRASH_RESTARTS:
                     self._stopped("Status: Keeps crashing, see typegpt.log")
                 else:
@@ -169,6 +178,7 @@ class TypeGPTGUI:
 
     def stop_program(self):
         if self.process:
+            log.info('[gui] stop clicked | pid=%d', self.process.pid)
             os.kill(self.process.pid, signal.SIGTERM)
             self.process = None
             self.status_label.config(text="Status: Not Running")
@@ -176,6 +186,11 @@ class TypeGPTGUI:
             self.stop_button.config(state="disabled")
 
 if __name__ == "__main__":
+    handler = logging.FileHandler(BASE_DIR / 'typegpt.log')
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [pid %(process)d] %(message)s'))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.info('[gui] TypeGPT Manager opened')
     root = tk.Tk()
     app = TypeGPTGUI(root)
     root.mainloop()
