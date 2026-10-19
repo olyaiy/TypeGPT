@@ -3,12 +3,12 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import api_call, openrouter_model_exists, DEFAULT_MODEL, MODEL_COMMANDS
+from api_calls import api_stream, openrouter_model_exists, DEFAULT_MODEL, MODEL_COMMANDS, THINKING
 import sys
 from PIL import Image, ImageGrab
 import io
-import time
 import platform
+import threading
 
 IS_MAC = platform.system() == 'Darwin'
 
@@ -19,6 +19,7 @@ MODIFIER_KEYS = (
 )
 SHIFT_KEYS = {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}
 PASTE_CHARS = ('v', 'V', '\x16')  # '\x16' is what Ctrl+V reports on some platforms
+THINKING_LABEL = '(thinking)'
 
 
 class TypeGPT:
@@ -36,6 +37,7 @@ class TypeGPT:
         self.screenshot_base64 = None
         self.should_quit = False
         self.should_restart = False
+        self.busy = False
         self.commands = {
             '/quit': self.quit,
             '/stop': self.stop_listening,
@@ -194,49 +196,57 @@ class TypeGPT:
         if self.listening and self.mode == 'model':
             self.choose_model(self.captured_text.strip())
         elif self.listening and self.mode in ['line', 'screenshot']:
-            self.process_text(self.captured_text)
-            self.listening = False
+            if self.busy:
+                return  # Still answering the previous prompt
+            text, screenshot_base64 = self.captured_text, self.screenshot_base64
+            self.cancel_input()
+            self.busy = True
+            # Answer on a separate thread so the keyboard listener never blocks
+            threading.Thread(
+                target=self.process_text,
+                args=(text, self.model, screenshot_base64),
+                daemon=True,
+            ).start()
 
-    def process_text(self, text):
-        self.type_output(' ...\n')
-        prompt = text.strip()
-        image_base64 = self.screenshot_base64
+    def process_text(self, text, model, screenshot_base64=None):
+        try:
+            self.type_output(' ...\n')
+            prompt = text.strip()
+            image_base64 = screenshot_base64
 
-        if '[IMAGE:' in prompt:
-            before, rest = prompt.split('[IMAGE:', 1)
-            image_base64, after = rest.split(']', 1)
-            prompt = (before + after).strip()
+            if '[IMAGE:' in prompt:
+                before, rest = prompt.split('[IMAGE:', 1)
+                image_base64, after = rest.split(']', 1)
+                prompt = (before + after).strip()
 
-        response = api_call(self.model, prompt, image_base64)
-        self.type_output(response)
-        self.screenshot = None
-        self.screenshot_base64 = None
-        self.mode = None
+            thinking_shown = False
+            answer_started = False
+            for kind, value in api_stream(model, prompt, image_base64):
+                if kind == THINKING:
+                    if not thinking_shown and not answer_started:
+                        self.type_output(THINKING_LABEL)
+                        thinking_shown = True
+                else:
+                    if thinking_shown:
+                        self.erase(len(THINKING_LABEL))
+                        thinking_shown = False
+                    answer_started = True
+                    self.type_output(value)
+            if thinking_shown:
+                self.erase(len(THINKING_LABEL))
+        finally:
+            self.busy = False
+
+    def erase(self, count):
+        for _ in range(count):
+            self.keyboard_controller.press(keyboard.Key.backspace)
+            self.keyboard_controller.release(keyboard.Key.backspace)
 
     def type_output(self, text):
-        if text == ' ...\n':  # Loading animation for processing
-            # Type the first two static dots
-            self.keyboard_controller.press('.')
-            self.keyboard_controller.release('.')
-            self.keyboard_controller.press('.')
-            self.keyboard_controller.release('.')
-            self.keyboard_controller.press('.')
-            self.keyboard_controller.release('.')
-            self.keyboard_controller.press('.')
-            self.keyboard_controller.release('.')
-
-            for _ in range(3):  # Animate between 2 and 3 dots
-                # Add third dot
+        if text == ' ...\n':  # Shows the prompt was sent
+            for _ in range(4):
                 self.keyboard_controller.press('.')
                 self.keyboard_controller.release('.')
-                time.sleep(0.25)  # Show three dots for 1 second
-
-                # Remove third dot
-                self.keyboard_controller.press(keyboard.Key.backspace)
-                self.keyboard_controller.release(keyboard.Key.backspace)
-                time.sleep(0.25)  # Show two dots for 0.5 second
-
-            # End with three dots and newline
             self.keyboard_controller.press(keyboard.Key.enter)
             self.keyboard_controller.release(keyboard.Key.enter)
         else:

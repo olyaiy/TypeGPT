@@ -121,7 +121,7 @@ Use the following commands in any text field:
 1. Type `/a` (or `/see` to include a screenshot)
 2. Type your prompt. You can use `/`, spaces, and Backspace normally
 3. Press `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux) to send
-4. Wait for the response to be typed out
+4. The answer is typed out as it arrives. While the model is thinking, `(thinking)` is shown and then erased when the answer starts
 
 ### Keyboard Controls
 - Send Query: `Cmd+Shift+Enter` (Mac) or `Ctrl+Shift+Enter` (Windows/Linux)

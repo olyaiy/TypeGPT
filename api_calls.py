@@ -103,6 +103,13 @@ def resolve_model(model):
     return provider, entry['model']
 
 
+# Each query_* function is a generator of (kind, value) events:
+#   (THINKING, None) while the model is reasoning
+#   (TEXT, "...")    for each piece of the answer
+THINKING = 'thinking'
+TEXT = 'text'
+
+
 # Function to query Claude
 def query_anthropic(model_id, text, image_base64=None):
     client = Anthropic(api_key=get_key('anthropic'))
@@ -118,19 +125,24 @@ def query_anthropic(model_id, text, image_base64=None):
             }
         })
 
-    response = client.beta.messages.create(
+    with client.beta.messages.stream(
         model=model_id,
-        max_tokens=16000,
+        max_tokens=64000,
         system=system_prompt,
         messages=[{"role": "user", "content": content}],
         # If a safety classifier declines, retry on a fallback model in the same call
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
-    )
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_start" and event.content_block.type in ("thinking", "redacted_thinking"):
+                yield THINKING, None
+            elif event.type == "content_block_delta" and event.delta.type == "text_delta":
+                yield TEXT, event.delta.text
+        response = stream.get_final_message()
 
     if response.stop_reason == "refusal":
-        return "Claude declined to answer this request."
-    return ''.join(block.text for block in response.content if block.type == "text")
+        yield TEXT, "Claude declined to answer this request."
 
 
 # Function to query OpenAI (Responses API)
@@ -144,57 +156,63 @@ def query_openai(model_id, text, image_base64=None):
             "image_url": f"data:image/png;base64,{image_base64}"
         })
 
-    response = client.responses.create(
+    stream = client.responses.create(
         model=model_id,
         instructions=system_prompt or None,
         input=[{"role": "user", "content": content}],
+        stream=True,
     )
-    return response.output_text
+    for event in stream:
+        if event.type == "response.output_item.added" and event.item.type == "reasoning":
+            yield THINKING, None
+        elif event.type == "response.output_text.delta":
+            yield TEXT, event.delta
+        elif event.type == "response.failed":
+            raise RuntimeError(event.response.error.message if event.response.error else "response failed")
+
+
+# Shared streaming for OpenAI-compatible Chat Completions APIs (DeepSeek, OpenRouter)
+def stream_chat_completions(client, model_id, text, image_base64=None, **kwargs):
+    content = [{"type": "text", "text": text}]
+    if image_base64:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
+        })
+
+    messages = [{"role": "user", "content": content}]
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
+
+    stream = client.chat.completions.create(model=model_id, messages=messages, stream=True, **kwargs)
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        # DeepSeek sends reasoning_content; OpenRouter sends reasoning / reasoning_details
+        if (getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None)
+                or getattr(delta, 'reasoning_details', None)):
+            yield THINKING, None
+        if delta.content:
+            yield TEXT, delta.content
 
 
 # Function to query DeepSeek (OpenAI-compatible Chat Completions API)
 def query_deepseek(model_id, text, image_base64=None):
     client = OpenAI(api_key=get_key('deepseek'), base_url="https://api.deepseek.com")
-
-    content = [{"type": "text", "text": text}]
-    if image_base64:
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
-        })
-
-    messages = [{"role": "user", "content": content}]
-    if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
-
-    response = client.chat.completions.create(model=model_id, messages=messages)
-    return response.choices[0].message.content
+    yield from stream_chat_completions(client, model_id, text, image_base64)
 
 
 # Function to query any model on OpenRouter (OpenAI-compatible Chat Completions API)
 def query_openrouter(model_id, text, image_base64=None):
     client = OpenAI(api_key=get_key('openrouter'), base_url=OPENROUTER_URL)
-
-    content = [{"type": "text", "text": text}]
-    if image_base64:
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
-        })
-
-    messages = [{"role": "user", "content": content}]
-    if system_prompt:
-        messages.insert(0, {"role": "system", "content": system_prompt})
-
-    response = client.chat.completions.create(
-        model=model_id,
-        messages=messages,
+    yield from stream_chat_completions(
+        client, model_id, text, image_base64,
         extra_headers={
             "HTTP-Referer": "https://github.com/olyaiy/TypeGPT",
             "X-OpenRouter-Title": "TypeGPT",
         },
     )
-    return response.choices[0].message.content
 
 
 # Function to query Gemini
@@ -208,12 +226,23 @@ def query_gemini(model_id, text, image_base64=None):
             mime_type="image/png"
         ))
 
-    response = client.models.generate_content(
+    stream = client.models.generate_content_stream(
         model=model_id,
         contents=contents,
-        config=types.GenerateContentConfig(system_instruction=system_prompt or None),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt or None,
+            # Sends thought summaries, which tell us when Gemini is thinking
+            thinking_config=types.ThinkingConfig(include_thoughts=True),
+        ),
     )
-    return response.text
+    for chunk in stream:
+        if not chunk.candidates or not chunk.candidates[0].content:
+            continue
+        for part in chunk.candidates[0].content.parts or []:
+            if part.thought:
+                yield THINKING, None
+            elif part.text:
+                yield TEXT, part.text
 
 
 # Function to query a local Ollama model
@@ -240,7 +269,7 @@ def query_ollama(model_id, text, image_base64=None):
 
     response = requests.post(url, json=payload)
     response.raise_for_status()
-    return response.json()['message']['content']
+    yield TEXT, response.json()['message']['content']
 
 
 PROVIDERS = {
@@ -253,17 +282,23 @@ PROVIDERS = {
 }
 
 
-# main function
-def api_call(model, text, image_base64=None):
+# main function: yields (THINKING, None) and (TEXT, str) events; errors come back as text
+def api_stream(model, text, image_base64=None):
     try:
         provider, model_id = resolve_model(model)
     except ValueError as e:
-        return f"Error: {e}"
+        yield TEXT, f"Error: {e}"
+        return
 
     if provider not in PROVIDERS:
-        return f"Error: Unknown provider '{provider}' in models.toml"
+        yield TEXT, f"Error: Unknown provider '{provider}' in models.toml"
+        return
 
     try:
-        return PROVIDERS[provider](model_id, text, image_base64)
+        yield from PROVIDERS[provider](model_id, text, image_base64)
     except Exception as e:
-        return f"Error in {model} ({provider}: {model_id}) API call: {e}"
+        yield TEXT, f"Error in {model} ({provider}: {model_id}) API call: {e}"
+
+
+def api_call(model, text, image_base64=None):
+    return ''.join(value for kind, value in api_stream(model, text, image_base64) if kind == TEXT)
