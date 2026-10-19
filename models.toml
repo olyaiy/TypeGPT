@@ -43,7 +43,3 @@ openrouter = "~deepseek/deepseek-flash-latest"
 provider = "gemini"
 model = "gemini-4-argon"
 openrouter = "google/gemini-4-argon"
-
-[models.llama3]
-provider = "ollama"
-model = "llama3"

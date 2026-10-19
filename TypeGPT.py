@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 from pynput import keyboard
 import pyperclip
-from api_calls import api_stream, openrouter_model_exists, DEFAULT_MODEL, MODEL_COMMANDS, THINKING
+from api_calls import api_stream, openrouter_model_exists, DEFAULT_MODEL, MODELS, MODEL_COMMANDS, THINKING
 import sys
 from PIL import Image, ImageGrab
 import io
@@ -20,6 +20,9 @@ MODIFIER_KEYS = (
 SHIFT_KEYS = {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r}
 PASTE_CHARS = ('v', 'V', '\x16')  # '\x16' is what Ctrl+V reports on some platforms
 THINKING_LABEL = '(thinking)'
+SEND_KEYS = 'Cmd+Shift+Enter' if IS_MAC else 'Ctrl+Shift+Enter'
+# press() types these literally, so map them to the real keys
+CONTROL_KEYS = {'\n': keyboard.Key.enter, '\r': keyboard.Key.enter, '\t': keyboard.Key.tab}
 
 
 class TypeGPT:
@@ -46,6 +49,7 @@ class TypeGPT:
             '/model': lambda: self.set_mode('model'),
             '/check': self.check_model,
             '/restart': self.restart,
+            '/help': self.show_help,
         }
         for command, model in MODEL_COMMANDS.items():
             self.commands[f'/{command}'] = lambda model=model: self.select_model(model)
@@ -187,6 +191,28 @@ class TypeGPT:
         else:
             self.type_output(f' ... unknown model: {name}')
 
+    def show_help(self):
+        self.listening = False
+        self.mode = None
+        lines = [
+            '',
+            'TypeGPT commands:',
+            f'/a  ask a question, then {SEND_KEYS} to send',
+            f'/see  ask about a screenshot, then {SEND_KEYS} to send',
+            f'/model  type any OpenRouter model ID, then {SEND_KEYS}',
+            '/check  show the active model',
+            '/stop  cancel input (or press Esc)',
+            '/restart  restart TypeGPT',
+            '/quit  quit TypeGPT',
+            '/help  show this list',
+            'Models:',
+        ]
+        for name, entry in MODELS.items():
+            commands = ', '.join(f'/{c}' for c in [name, *entry.get('aliases', [])])
+            active = '  (active)' if name == self.model else ''
+            lines.append(f'{commands}  {entry["model"]}{active}')
+        threading.Thread(target=self.type_output, args=('\n'.join(lines),), daemon=True).start()
+
     def check_model(self):
         self.type_output(f" -> {self.model} selected.")
         self.listening = False
@@ -252,8 +278,9 @@ class TypeGPT:
         else:
             # Normal text output
             for char in text:
-                self.keyboard_controller.press(char)
-                self.keyboard_controller.release(char)
+                key = CONTROL_KEYS.get(char, char)
+                self.keyboard_controller.press(key)
+                self.keyboard_controller.release(key)
 
     def restart(self):
         self.type_output(' ...restarting.')

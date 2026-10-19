@@ -22,9 +22,9 @@ UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
 echo "Installing Python packages..."
 "$UV" sync
 
-# Ollama is only needed for local models like Llama3
+# Ollama is only needed for local models
 if ! command -v ollama &> /dev/null; then
-    echo "Note: Ollama is not installed. It's only needed for /llama3 and other local models."
+    echo "Note: Ollama is not installed. It's only needed if you add local models to models.toml."
     echo "Get it at https://ollama.com/download"
 fi
 

@@ -27,7 +27,6 @@ https://github.com/olyaiy/TypeGPT/assets/97487352/d92022db-171f-4b3e-804b-320fe0
 | `/gpt` (also `/chatgpt`) | `gpt-6.1-sol` | OpenAI |
 | `/deepseek` | `deepseek-flash` | DeepSeek |
 | `/gemini` | `gemini-4-argon` | Google |
-| `/llama3` | `llama3` | Ollama (local) |
 
 To add a model, add an entry to `models.toml`:
 
@@ -114,6 +113,7 @@ Use the following commands in any text field:
 - `/quit`: Quit the program
 - `/restart`: Restart the program
 - `/check`: Check which model is currently active
+- `/help`: Type out the list of commands and models
 - `/<model>`: Switch models (see [Models](#models))
 - `/model`: Type any OpenRouter model ID, then `Cmd+Shift+Enter` to switch to it
 
